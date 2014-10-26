@@ -1,0 +1,37 @@
+OASISFormat: 0.4
+Name:        ocaml-otr
+Version:     0.1.1
+Synopsis:    Off the record in OCaml
+Authors:     Hannes Mehnert <hannes@mehnert.org>
+Maintainers: Hannes Mehnert <hannes@mehnert.org>
+Homepage:    https://github.com/hannesm/ocaml-otr
+License:     FreeBSD
+Plugins:     META (0.4), DevFiles (0.4)
+BuildTools:  ocamlbuild
+Description:
+  OTR implementation purely in OCaml
+
+Library "otr"
+  Path            : src/
+  Modules         : Packet, Crypto, State, Builder, Parser, Handshake
+  Pack            : true
+  BuildDepends    : cstruct, cstruct.syntax, nocrypto
+
+Library "tests"
+  Path            : tests/
+  Modules         : Unittests
+  Install         : false
+  Build          $: flag(tests)
+  BuildDepends    : otr, oUnit, cstruct.unix
+
+Executable "test_runner"
+  Build          $: flag(tests)
+  Path            : tests/
+  Install         : false
+  CompiledObject  : native
+  MainIs          : unittestrunner.ml
+  BuildDepends    : otr, tests
+
+Test it
+  Command         : $test_runner -runner sequential
+  Run            $: flag(tests)

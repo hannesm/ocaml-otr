@@ -1,0 +1,12 @@
+# OASIS_START
+# DO NOT EDIT (digest: 993c110c9066e336ad5bcf99b89dc020)
+version = "0.1.1"
+description = "Off the record in OCaml"
+requires = "otr oUnit cstruct.unix"
+archive(byte) = "tests.cma"
+archive(byte, plugin) = "tests.cma"
+archive(native) = "tests.cmxa"
+archive(native, plugin) = "tests.cmxs"
+exists_if = "tests.cma"
+# OASIS_STOP
+
