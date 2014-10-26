@@ -1,8 +1,9 @@
 # OASIS_START
-# DO NOT EDIT (digest: e6c216bb2ae82dcabe62ec9ea62a90b2)
+# DO NOT EDIT (digest: b7f7917670ef2650dd758be439b3a252)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
+true: annot, bin_annot
 <**/.svn>: -traverse
 <**/.svn>: not_hygienic
 ".bzr": -traverse
@@ -21,9 +22,9 @@
 "src/builder.cmx": for-pack(Otr)
 "src/parser.cmx": for-pack(Otr)
 "src/handshake.cmx": for-pack(Otr)
-<src/*.ml{,i}>: pkg_cstruct
-<src/*.ml{,i}>: pkg_cstruct.syntax
-<src/*.ml{,i}>: pkg_nocrypto
+<src/*.ml{,i,y}>: pkg_cstruct
+<src/*.ml{,i,y}>: pkg_cstruct.syntax
+<src/*.ml{,i,y}>: pkg_nocrypto
 # Library tests
 "tests/tests.cmxs": use_tests
 # Executable test_runner
@@ -34,11 +35,11 @@
 "tests/unittestrunner.native": pkg_oUnit
 "tests/unittestrunner.native": use_otr
 "tests/unittestrunner.native": use_tests
-<tests/*.ml{,i}>: pkg_cstruct
-<tests/*.ml{,i}>: pkg_cstruct.syntax
-<tests/*.ml{,i}>: pkg_cstruct.unix
-<tests/*.ml{,i}>: pkg_nocrypto
-<tests/*.ml{,i}>: pkg_oUnit
-<tests/*.ml{,i}>: use_otr
-<tests/*.ml{,i}>: use_tests
+<tests/*.ml{,i,y}>: pkg_cstruct
+<tests/*.ml{,i,y}>: pkg_cstruct.syntax
+<tests/*.ml{,i,y}>: pkg_cstruct.unix
+<tests/*.ml{,i,y}>: pkg_nocrypto
+<tests/*.ml{,i,y}>: pkg_oUnit
+<tests/*.ml{,i,y}>: use_otr
+<tests/*.ml{,i,y}>: use_tests
 # OASIS_STOP
