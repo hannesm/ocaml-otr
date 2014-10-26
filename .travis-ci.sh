@@ -1,5 +1,5 @@
 # OPAM packages needed to build tests.
-OPAM_PACKAGES="cstruct sexplib nocrypto oUnit"
+OPAM_PACKAGES="cstruct sexplib ctypes nocrypto oUnit"
 
 case "$OCAML_VERSION" in
     4.01.0) ppa=avsm/ocaml41+opam11 ;;
