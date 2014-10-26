@@ -19,7 +19,8 @@ let parse_query str =
       | '?' ->
         let leftover =
           let l = String.length str in
-          if l > idx + 1 then Some (String.sub str idx (l - idx)) else None
+          let r = succ idx in
+          if l > r then Some (String.sub str r (l - r)) else None
         in
         (List.rev acc, leftover)
       | _ -> parse_v str acc (idx + 1)
