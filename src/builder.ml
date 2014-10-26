@@ -51,7 +51,7 @@ let encode_int data =
 
 let dh_commit version instances dhshared hashed =
   let header = header version instances DH_COMMIT in
-  header <+> dhshared <+> encode_data hashed
+  header <+> encode_data dhshared <+> encode_data hashed
 
 let dh_key version instances shared =
   let header = header version instances DH_KEY in
