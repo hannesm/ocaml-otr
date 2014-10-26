@@ -9,7 +9,9 @@ let decode_data buf =
   (sub buf 4 intsize, shift buf (4 + intsize))
 
 let parse_query str =
-  if String.length str > 1 then
+  match String.length str with
+  | 1 when String.get str 0 = '?' -> ([], None)
+  | x when x > 1 ->
     let rec parse_v str acc idx =
       match String.get str idx with
       | '2' -> parse_v str (`V2 :: acc) (idx + 1)
@@ -22,12 +24,12 @@ let parse_query str =
         (List.rev acc, leftover)
       | _ -> parse_v str acc (idx + 1)
     in
-    match String.get str 0, String.get str 1 with
-    | '?', 'v' -> parse_v str [] 2
-    | 'v', _ -> parse_v str [] 1
-    | _ -> ([], Some str)
-  else
-    ([], Some str)
+    (match String.get str 0, String.get str 1 with
+     | '?', 'v' -> parse_v str [] 2
+     | 'v', _ -> parse_v str [] 1
+     | _ -> ([], Some str) )
+
+  | x -> ([], Some str)
 
 let assert_versions theirs ours =
   match int_to_packet_version theirs with
