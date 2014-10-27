@@ -28,7 +28,7 @@ let maybe_commit ctx their_versions =
   | Some version ->
     let secret, gx = Crypto.gen_dh_secret () in
     let r = Crypto.gen_symmetric_key () in
-    let gxmpi = Crypto.crypt ~key:r ~ctr:Crypto.ctr0 gx in
+    let gxmpi = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gx in
     let h = Crypto.hash gx in
     let instances = instances version in
     let dh_commit = Builder.dh_commit version instances gxmpi h in
@@ -127,7 +127,7 @@ let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
   let enc_data, mac = Cstruct.(split signature (len signature - 20)) in
   let mymac = Crypto.mac160 ~key:m2' [ enc_data ] in
   assert (Nocrypto.Uncommon.Cs.equal mac mymac) ;
-  let dec = Crypto.crypt ~key:c' ~ctr:Crypto.ctr0 enc_data in
+  let dec = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) enc_data in
   (* split into puba keyida siga(Ma) *)
   let (p, q, gg, y), keyida, siga = Parser.parse_signature_data dec in
   let keyid = Builder.encode_int keyida in
