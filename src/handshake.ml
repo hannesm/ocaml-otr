@@ -84,7 +84,6 @@ let check_key_reveal_sig ctx { secret ; gx } r gy =
   let keyid = Builder.encode_int keyidb in
   let pub = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
   let mb = Crypto.mac ~key:m1 [ gx ; gy ; pub ; keyid ] in
-  let mb = Crypto.OtrDsa.smoothen_m mb (Nocrypto.Dsa.pub_of_priv ctx.config.dsa) in
   let signature = Crypto.OtrDsa.signature ~key:ctx.config.dsa mb in
   let xb = pub <+> keyid <+> signature in
   let enc_sig = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) xb in
@@ -113,13 +112,11 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
   let pubb = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
   let pubb_wire = Crypto.OtrDsa.to_wire pubb in
   let mb = Crypto.mac ~key:m1 [ gx ; gy ; pubb_wire ; Builder.encode_int keyidb ] in
-  let mb = Crypto.OtrDsa.smoothen_m mb pubb in
   assert (Crypto.OtrDsa.verify ~key:pubb sigb mb) ;
   (* pick keyida *)
   let keyida = 1l in
   let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
   let ma = Crypto.mac ~key:m1' [ gy ; gx ; puba ; Builder.encode_int keyida ] in
-  let ma = Crypto.OtrDsa.smoothen_m ma (Nocrypto.Dsa.pub_of_priv ctx.config.dsa) in
   let siga = Crypto.OtrDsa.signature ~key:ctx.config.dsa ma in
   let xa = puba <+> (Builder.encode_int keyida) <+> siga in
   let enc = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa in
@@ -138,7 +135,6 @@ let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
   let keyid = Builder.encode_int keyida in
   let puba = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
   let ma = Crypto.mac ~key:m1' [ gy ; gx ; (Crypto.OtrDsa.to_wire puba) ; keyid ] in
-  let ma = Crypto.OtrDsa.smoothen_m ma puba in
   assert (Crypto.OtrDsa.verify ~key:puba siga ma) ;
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
   { ctx with state }
