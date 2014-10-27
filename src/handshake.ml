@@ -75,6 +75,7 @@ let dh_key_await_revealsig ctx buf =
 
 let (<+>) = Nocrypto.Uncommon.Cs.append
 
+
 let check_key_reveal_sig ctx { secret ; gx } r gy =
   let shared_secret = Crypto.dh_shared secret gy in
   let keys = Crypto.derive_keys shared_secret in
@@ -83,11 +84,13 @@ let check_key_reveal_sig ctx { secret ; gx } r gy =
   let keyid = Builder.encode_int keyidb in
   let pub = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
   let mb = Crypto.mac ~key:m1 [ gx ; gy ; pub ; keyid ] in
+  let mb = Crypto.OtrDsa.smoothen_m mb (Nocrypto.Dsa.pub_of_priv ctx.config.dsa) in
   let signature = Crypto.OtrDsa.signature ~key:ctx.config.dsa mb in
   let xb = pub <+> keyid <+> signature in
-  let enc_sig = Crypto.crypt ~key:c ~ctr:Crypto.ctr0 xb in
-  let mac = Crypto.mac160 ~key:m2 [ enc_sig ] in
-  let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
+  let enc_sig = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) xb in
+  let enc_sig_d = Builder.encode_data enc_sig in
+  let mac = Crypto.mac160 ~key:m2 [ enc_sig_d ] in
+  let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig_d mac in
   let dh_params = { secret ; gx ; gy } in
   let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, dh_params) } in
   ({ ctx with state }, reveal_sig)
@@ -97,28 +100,30 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
   let gxenc, dh_commit = Parser.decode_data dh_commit in
   let hgx, dh_commit = Parser.decode_data dh_commit in
   assert (Cstruct.len dh_commit = 0) ;
-  let gx = Crypto.crypt ~key:r ~ctr:Crypto.ctr0 gxenc in
+  let gx = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxenc in
   let hgx' = Crypto.hash gx in
   assert (Nocrypto.Uncommon.Cs.equal hgx hgx') ;
   let shared_secret = Crypto.dh_shared secret gx in
   let { c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
-  let mac' = Crypto.mac160 ~key:m2 [ enc_data ] in
+  let mac' = Crypto.mac160 ~key:m2 [ Builder.encode_data enc_data ] in
   assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
-  let xb = Crypto.crypt ~key:c ~ctr:Crypto.ctr0 enc_data in
+  let xb = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) enc_data in
   (* split into pubb, keyidb, sigb *)
   let (p,q,gg,y), keyidb, sigb = Parser.parse_signature_data xb in
   let pubb = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
   let pubb_wire = Crypto.OtrDsa.to_wire pubb in
   let mb = Crypto.mac ~key:m1 [ gx ; gy ; pubb_wire ; Builder.encode_int keyidb ] in
+  let mb = Crypto.OtrDsa.smoothen_m mb pubb in
   assert (Crypto.OtrDsa.verify ~key:pubb sigb mb) ;
   (* pick keyida *)
   let keyida = 1l in
   let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
   let ma = Crypto.mac ~key:m1' [ gy ; gx ; puba ; Builder.encode_int keyida ] in
+  let ma = Crypto.OtrDsa.smoothen_m ma (Nocrypto.Dsa.pub_of_priv ctx.config.dsa) in
   let siga = Crypto.OtrDsa.signature ~key:ctx.config.dsa ma in
   let xa = puba <+> (Builder.encode_int keyida) <+> siga in
-  let enc = Crypto.crypt ~key:c' ~ctr:Crypto.ctr0 xa in
-  let m = Crypto.mac160 ~key:m2' [ enc ] in
+  let enc = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa in
+  let m = Crypto.mac160 ~key:m2' [ Builder.encode_data enc ] in
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
   ({ ctx with state }, Builder.signature ctx.version ctx.instances enc m)
 
@@ -133,6 +138,7 @@ let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
   let keyid = Builder.encode_int keyida in
   let puba = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
   let ma = Crypto.mac ~key:m1' [ gy ; gx ; (Crypto.OtrDsa.to_wire puba) ; keyid ] in
+  let ma = Crypto.OtrDsa.smoothen_m ma puba in
   assert (Crypto.OtrDsa.verify ~key:puba siga ma) ;
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
   { ctx with state }
@@ -234,6 +240,7 @@ let maybe_concat prefix postfix =
   | Some pre, None -> Some pre
   | None, Some post -> Some post
 
+
 (* TODO: fragmentation (using ',' as final character) *)
 let classify bytes =
   let otr_mark = Str.regexp_string "?OTR:"
@@ -294,18 +301,23 @@ let wrap_b64string = function
 let handle (ctx : session) bytes =
   match classify bytes with
   | `PlainTag (versions, text) ->
+    Printf.printf "received plaintag!\n" ;
     let ctx, out, warn = handle_whitespace_tag ctx versions in
     (ctx, wrap_b64string out, warn, None, text)
   | `Query (versions, text) ->
+    Printf.printf "received query!\n" ;
     let ctx, out = handle_query ctx versions in
     (ctx, wrap_b64string out, None, None, text)
   | `Error message ->
+    Printf.printf "received error!\n" ;
     let out = handle_error ctx in
     (ctx, out, None, None, Some message)
   | `Data (bytes, message) ->
+    Printf.printf "received data:" ; Cstruct.hexdump bytes ;
     let ctx, out, enc = handle_data ctx bytes in
     (ctx, wrap_b64string out, None, enc, message)
   | `String message ->
+    Printf.printf "received string!" ; Cstruct.(hexdump (of_string message)) ;
     let ctx, warn = handle_cleartext ctx in
     (ctx, None, warn, None, Some message)
 
