@@ -98,9 +98,7 @@ let check_key_reveal_sig ctx { secret ; gx } r gy =
 let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
   let r, enc_data, mac = Parser.parse_reveal buf in
   let gx =
-    let gxenc, dh_commit = Parser.decode_data dh_commit in
-    let hgx, dh_commit = Parser.decode_data dh_commit in
-    assert (Cstruct.len dh_commit = 0) ;
+    let gxenc, hgx = Parser.parse_dh_commit dh_commit in
     let gx = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxenc in
     let hgx' = Crypto.hash gx in
     assert (Nocrypto.Uncommon.Cs.equal hgx hgx') ;

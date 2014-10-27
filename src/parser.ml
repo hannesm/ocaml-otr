@@ -69,3 +69,10 @@ let parse_reveal buf =
   let enc_data, mac = decode_data buf in
   assert (len mac = 20) ;
   (r, enc_data, mac)
+
+let parse_dh_commit buf =
+  let gxenc, buf = decode_data buf in
+  let hgx, buf = decode_data buf in
+  assert (len buf = 0) ;
+  assert (len hgx = 32) ;
+  (gxenc, hgx)
