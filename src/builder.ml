@@ -59,7 +59,7 @@ let dh_key version instances shared =
 
 let reveal_signature version instances r enc_sig mac =
   let header = header version instances REVEAL_SIGNATURE in
-  header <+> encode_data r <+> enc_sig <+> mac
+  header <+> encode_data r <+> encode_data enc_sig <+> mac
 
 let signature version instances enc mac =
   let header = header version instances SIGNATURE in

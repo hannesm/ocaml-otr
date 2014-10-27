@@ -99,7 +99,7 @@ let mac ~key data =
   Hash.mac `SHA256 ~key data
 
 let mac160 ~key data =
-  let buf = mac ~key data in
+  let buf = mac ~key [ Builder.encode_data data ] in
   Cstruct.sub buf 0 20
 
 let group = Dh.Group.oakley_5

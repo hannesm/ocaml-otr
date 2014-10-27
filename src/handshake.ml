@@ -89,32 +89,36 @@ let check_key_reveal_sig ctx { secret ; gx } r gy =
     let xb = pubb <+> Builder.encode_int keyidb <+> sigb in
     Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) xb
   in
-  let enc_sig_d = Builder.encode_data enc_sig in
-  let mac = Crypto.mac160 ~key:m2 [ enc_sig_d ] in
-  let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig_d mac in
+  let mac = Crypto.mac160 ~key:m2 enc_sig in
+  let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
   let dh_params = { secret ; gx ; gy } in
   let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, dh_params) } in
   ({ ctx with state }, reveal_sig)
 
 let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
-  let (r, enc_data, mac) = Parser.parse_reveal buf in
-  let gxenc, dh_commit = Parser.decode_data dh_commit in
-  let hgx, dh_commit = Parser.decode_data dh_commit in
-  assert (Cstruct.len dh_commit = 0) ;
-  let gx = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxenc in
-  let hgx' = Crypto.hash gx in
-  assert (Nocrypto.Uncommon.Cs.equal hgx hgx') ;
+  let r, enc_data, mac = Parser.parse_reveal buf in
+  let gx =
+    let gxenc, dh_commit = Parser.decode_data dh_commit in
+    let hgx, dh_commit = Parser.decode_data dh_commit in
+    assert (Cstruct.len dh_commit = 0) ;
+    let gx = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxenc in
+    let hgx' = Crypto.hash gx in
+    assert (Nocrypto.Uncommon.Cs.equal hgx hgx') ;
+    gx
+  in
   let shared_secret = Crypto.dh_shared secret gx in
   let { c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
-  let mac' = Crypto.mac160 ~key:m2 [ Builder.encode_data enc_data ] in
+  let mac' = Crypto.mac160 ~key:m2 enc_data in
   assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
-  let xb = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) enc_data in
-  (* split into pubb, keyidb, sigb *)
-  let (p,q,gg,y), keyidb, sigb = Parser.parse_signature_data xb in
-  let pubb = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
-  let pubb_wire = Crypto.OtrDsa.to_wire pubb in
-  let mb = Crypto.mac ~key:m1 [ gx ; gy ; pubb_wire ; Builder.encode_int keyidb ] in
-  assert (Crypto.OtrDsa.verify ~key:pubb sigb mb) ;
+  let pubb, keyidb =
+    let xb = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) enc_data in
+    (* split into pubb, keyidb, sigb *)
+    let (p,q,gg,y), keyidb, sigb = Parser.parse_signature_data xb in
+    let pubb = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
+    let mb = Crypto.mac ~key:m1 [ gx ; gy ; Crypto.OtrDsa.to_wire pubb ; Builder.encode_int keyidb ] in
+    assert (Crypto.OtrDsa.verify ~key:pubb sigb mb) ;
+    (pubb, keyidb)
+  in
   (* pick keyida *)
   let keyida = 1l in
   let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
@@ -126,22 +130,28 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
     let xa = puba <+> Builder.encode_int keyida <+> siga in
     Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa
   in
-  let m = Crypto.mac160 ~key:m2' [ Builder.encode_data enc ] in
+  let m = Crypto.mac160 ~key:m2' enc in
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
   ({ ctx with state }, Builder.signature ctx.version ctx.instances enc m)
 
 let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
   (* decrypt signature, verify it and macs *)
-  let enc_data, mac = Cstruct.(split signature (len signature - 20)) in
-  let mymac = Crypto.mac160 ~key:m2' [ enc_data ] in
-  assert (Nocrypto.Uncommon.Cs.equal mac mymac) ;
-  let dec = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) enc_data in
-  (* split into puba keyida siga(Ma) *)
-  let (p, q, gg, y), keyida, siga = Parser.parse_signature_data dec in
-  let keyid = Builder.encode_int keyida in
-  let puba = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
-  let ma = Crypto.mac ~key:m1' [ gy ; gx ; (Crypto.OtrDsa.to_wire puba) ; keyid ] in
-  assert (Crypto.OtrDsa.verify ~key:puba siga ma) ;
+  let enc_data =
+    let enc_data, mac = Parser.decode_data signature in
+    assert (Cstruct.len mac = 20) ;
+    let mymac = Crypto.mac160 ~key:m2' enc_data in
+    assert (Nocrypto.Uncommon.Cs.equal mac mymac) ;
+    enc_data
+  in
+  let puba, keyida =
+    let dec = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) enc_data in
+    (* split into puba keyida siga(Ma) *)
+    let (p, q, gg, y), keyida, siga = Parser.parse_signature_data dec in
+    let puba = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
+    let ma = Crypto.mac ~key:m1' [ gy ; gx ; Crypto.OtrDsa.to_wire puba ; Builder.encode_int keyida ] in
+    assert (Crypto.OtrDsa.verify ~key:puba siga ma) ;
+    (puba, keyida)
+  in
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
   { ctx with state }
 
