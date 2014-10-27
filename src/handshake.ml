@@ -75,18 +75,20 @@ let dh_key_await_revealsig ctx buf =
 
 let (<+>) = Nocrypto.Uncommon.Cs.append
 
-
 let check_key_reveal_sig ctx { secret ; gx } r gy =
   let shared_secret = Crypto.dh_shared secret gy in
   let keys = Crypto.derive_keys shared_secret in
   let { c ; m1 ; m2 } = keys in
   let keyidb = 1l in
-  let keyid = Builder.encode_int keyidb in
-  let pub = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
-  let mb = Crypto.mac ~key:m1 [ gx ; gy ; pub ; keyid ] in
-  let signature = Crypto.OtrDsa.signature ~key:ctx.config.dsa mb in
-  let xb = pub <+> keyid <+> signature in
-  let enc_sig = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) xb in
+  let pubb = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
+  let sigb =
+    let mb = Crypto.mac ~key:m1 [ gx ; gy ; pubb ; Builder.encode_int keyidb ] in
+    Crypto.OtrDsa.signature ~key:ctx.config.dsa mb
+  in
+  let enc_sig =
+    let xb = pubb <+> Builder.encode_int keyidb <+> sigb in
+    Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) xb
+  in
   let enc_sig_d = Builder.encode_data enc_sig in
   let mac = Crypto.mac160 ~key:m2 [ enc_sig_d ] in
   let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig_d mac in
@@ -116,10 +118,14 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
   (* pick keyida *)
   let keyida = 1l in
   let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
-  let ma = Crypto.mac ~key:m1' [ gy ; gx ; puba ; Builder.encode_int keyida ] in
-  let siga = Crypto.OtrDsa.signature ~key:ctx.config.dsa ma in
-  let xa = puba <+> (Builder.encode_int keyida) <+> siga in
-  let enc = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa in
+  let siga =
+    let ma = Crypto.mac ~key:m1' [ gy ; gx ; puba ; Builder.encode_int keyida ] in
+    Crypto.OtrDsa.signature ~key:ctx.config.dsa ma
+  in
+  let enc =
+    let xa = puba <+> Builder.encode_int keyida <+> siga in
+    Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa
+  in
   let m = Crypto.mac160 ~key:m2' [ Builder.encode_data enc ] in
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
   ({ ctx with state }, Builder.signature ctx.version ctx.instances enc m)
