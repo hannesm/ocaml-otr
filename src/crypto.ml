@@ -49,6 +49,11 @@ module OtrDsa = struct
     r <+> s
 
   let verify = Dsa.verify
+
+  let smoothen_m m { q } =
+    let m' = Numeric.Z.of_cstruct_be m in
+    Numeric.Z.to_cstruct_be Z.(m' mod q)
+
 end
 
 let derive_keys data =
