@@ -196,7 +196,7 @@ let handle_data ctx bytes =
 
 (* operations triggered by a user *)
 let start_otr ctx =
-  (ctx, [Builder.query_message ctx.config.versions])
+  (ctx, Builder.query_message ctx.config.versions)
 
 let send_otr ctx data =
   match ctx.state.message_state with
