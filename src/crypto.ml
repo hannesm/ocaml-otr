@@ -44,18 +44,12 @@ module OtrDsa = struct
     (* only handling key type 0000, DSA *)
     Hash.digest `SHA1 (to_wire ~notag:() k)
 
-  let mod_q m { q } =
-    let m' = Numeric.Z.of_cstruct_be m in
-    Numeric.Z.to_cstruct_be Z.(m' mod q)
-
   let signature ~key data =
-    let data = mod_q data (pub_of_priv key) in
-    let r, s = sign ~key data in
+    let r, s = sign ~key (massage ~key:(pub_of_priv key) data) in
     r <+> s
 
   let verify ~key rs data =
-    let data = mod_q data key in
-    Dsa.verify ~key rs data
+    Dsa.verify ~key rs (massage ~key data)
 end
 
 let derive_keys data =
