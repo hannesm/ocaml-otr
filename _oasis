@@ -13,7 +13,7 @@ Description:
 
 Library "otr"
   Path            : src/
-  Modules         : Packet, Crypto, State, Builder, Parser, Handshake
+  Modules         : Packet, Control, Crypto, State, Builder, Parser, Handshake
   Pack            : true
   BuildDepends    : cstruct, cstruct.syntax, nocrypto
 
