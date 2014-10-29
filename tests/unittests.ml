@@ -37,10 +37,10 @@ let query_tests =
             query_parser_neg_tests
 
 
-let reader_tests =
+let parser_tests =
   query_tests
 
 let suite =
   "All" >::: [
-    "Reader" >::: reader_tests ;
+    "Parser" >::: parser_tests ;
   ]
