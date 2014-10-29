@@ -112,7 +112,8 @@ let classify_input bytes =
               | "  \t\t  \t\t" -> find_mark (idx + 8) (`V3 :: acc)
               | _ -> find_mark (idx + 8) acc
           in
-          try find_mark 0 [] with Not_found -> `String bytes
+          (try find_mark 0 [] with Not_found -> `String bytes)
+        | Error _ -> `String bytes
 
 (* real OTR data parsing *)
 let decode_data buf =
