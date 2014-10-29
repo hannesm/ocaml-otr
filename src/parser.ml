@@ -24,6 +24,97 @@ let catch f x =
   | Parser_error err   -> fail err
   | Invalid_argument _ -> fail Underflow
 
+(* String splitting at index idx *)
+let string_split str idx =
+  if idx > 0 then
+    let pre = Some (String.sub str 0 idx)
+    and idx' = succ idx
+    and len = String.length str
+    in
+    if idx' < len then
+      (pre, Some (String.(sub str idx' (len - idx'))))
+    else
+      (pre, None)
+  else
+    (None, Some str)
+
+(* parse query string *)
+let parse_query_exn str =
+  let rec parse_v idx acc =
+    match String.get str idx with
+    | '2' -> parse_v (succ idx) (`V2 :: acc)
+    | '3' -> parse_v (succ idx) (`V3 :: acc)
+    | '?' ->
+      let _, post = string_split str idx in
+      (List.rev acc, post)
+    | _ -> parse_v (succ idx) acc
+  in
+  match String.(get str 0, get str 1) with
+  | '?', 'v' -> parse_v 2 []
+  | 'v', _ -> parse_v 1 []
+  | _ -> raise_unknown "no usable version found"
+
+let parse_query = catch parse_query_exn
+
+(* string parsing, classification *)
+let maybe_concat pre post =
+  match pre, post with
+  | None, None -> None
+  | Some pre, Some post -> Some ("before: " ^ pre ^ " after: " ^ post)
+  | Some pre, None -> Some pre
+  | None, Some post -> Some post
+
+let re_match_exn re relen data =
+  let idx = Str.search_forward re data 0 in
+  match string_split data idx with
+  | pre, Some data -> (pre, String.(sub data relen (length data - relen)))
+  | _ -> raise_unknown "re matched, but no data found"
+
+let re_match re relen data =
+  try Ok (re_match_exn re relen data) with _ -> Error (Unknown "parse failed")
+
+(* TODO: fragmentation (',' as final character) *)
+let classify_input bytes =
+  let otr_mark = Str.regexp_string "?OTR:"
+  and otr_err_mark = Str.regexp_string "?OTR Error:"
+  and otr_query_mark = Str.regexp_string "?OTR"
+  and tag_prefix = Str.regexp_string " \t  \t\t\t\t \t \t \t  "
+  in
+
+  match re_match otr_mark 5 bytes with
+  | Ok (pre, data) ->
+    begin
+      try
+        ( match string_split data (String.index data '.') with
+          | Some data, post ->
+            let b64data = Cstruct.of_string data in
+            `Data (Nocrypto.Base64.decode b64data, maybe_concat pre post)
+          | None, _ -> `String bytes )
+      with Not_found -> `String bytes (* TODO: fragmentation *)
+    end
+  | Error _ -> match re_match otr_err_mark 11 bytes with
+    | Ok (pre, data) -> `Error (data, pre)
+    | Error _ -> match re_match otr_query_mark 4 bytes with
+      | Ok (pre, data) ->
+        ( match parse_query data with
+          | Ok (versions, post) -> `Query (versions, maybe_concat pre post)
+          | Error _ -> `String bytes )
+      | Error _ -> match re_match tag_prefix 16 bytes with
+        | Ok (pre, data) ->
+          let len = String.length data in
+          let rec find_mark idx acc =
+            if len - idx < 8 then
+              let _, post = string_split data idx in
+              `PlainTag (List.rev acc, maybe_concat pre post)
+            else
+              match String.sub data idx 8 with
+              | "  \t\t  \t " -> find_mark (idx + 8) (`V2 :: acc)
+              | "  \t\t  \t\t" -> find_mark (idx + 8) (`V3 :: acc)
+              | _ -> find_mark (idx + 8) acc
+          in
+          try find_mark 0 [] with Not_found -> `String bytes
+
+(* real OTR data parsing *)
 let decode_data buf =
   let size = BE.get_uint32 buf 0 in
   let intsize = Int32.to_int size in
@@ -31,27 +122,6 @@ let decode_data buf =
 
 (*let decode_data = catch decode_data_exn*)
 
-(* input is a string which starts with ?OTR *)
-let parse_query_exn str =
-  let rec parse_v idx acc =
-    match String.get str idx with
-    | '2' -> parse_v (succ idx) (`V2 :: acc)
-    | '3' -> parse_v (succ idx) (`V3 :: acc)
-    | '?' ->
-      let rst =
-        let l = String.length str in
-        let next = succ idx in
-        if l > next then Some (String.sub str next (l - next)) else None
-      in
-      (List.rev acc, rst)
-    | _ -> parse_v (succ idx) acc
-  in
-  match String.(get str 4, get str 5) with
-  | '?', 'v' -> parse_v 6 []
-  | 'v', _ -> parse_v 5 []
-  | _ -> raise_unknown "no usable version found"
-
-let parse_query = catch parse_query_exn
 
 let assert_versions theirs ours =
   match int_to_packet_version theirs with

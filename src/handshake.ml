@@ -243,86 +243,6 @@ let end_otr ctx =
   | MSGSTATE_FINISHED ->
      ({ ctx with state }, [], None)
 
-let maybe_concat pre post =
-  match pre, post with
-  | None, None -> None
-  | Some pre, Some post -> Some ("before: " ^ pre ^ " after: " ^ post)
-  | Some pre, None -> Some pre
-  | None, Some post -> Some post
-
-
-(* TODO: fragmentation (using ',' as final character) *)
-let classify bytes =
-  let otr_mark = Str.regexp_string "?OTR:"
-  and otr_err_mark = Str.regexp_string "?OTR Error:"
-  and otr_query_mark = Str.regexp_string "?OTR"
-  and tag_prefix = Str.regexp_string " \t  \t\t\t\t \t \t \t  "
-  in
-
-  let split str idx =
-    if idx > 0 then
-      let pre = Some (String.sub str 0 idx)
-      and idx' = succ idx
-      and l = String.length str
-      in
-      if idx' < l then
-        (pre, Some (String.(sub str idx' (l - idx'))))
-      else
-        (pre, None)
-    else
-      (None, Some str)
-  in
-
-  if Str.string_match otr_mark bytes 0 then
-    let start = Str.search_forward otr_mark bytes 0 in
-    match split bytes start with
-    | pre, Some data ->
-      begin
-        try
-          ( match split data (String.index data '.') with
-            | Some data, post ->
-              let b64data = Cstruct.(shift (of_string data) 5) in
-              let leftover = maybe_concat pre post in
-              `Data (Nocrypto.Base64.decode b64data, leftover)
-            | None, leftover -> `String bytes )
-        with Not_found -> `String bytes (* TODO: fragmentation *)
-      end
-    | _ -> `String bytes
-  else if Str.string_match otr_err_mark bytes 0 then
-    `Error bytes
-  else if Str.string_match otr_query_mark bytes 0 then
-    let start = Str.search_forward otr_query_mark bytes 0 in
-    match split bytes start with
-    | pre, Some data ->
-      ( match Parser.parse_query data with
-        | Parser.Or_error.Ok (versions, post) ->
-          let text = maybe_concat pre post in
-          `Query (versions, text)
-        | Parser.Or_error.Error _ ->
-          `String bytes )
-    | _ -> `String bytes
-  else if Str.string_match tag_prefix bytes 0 then
-    let start = 16 + Str.search_forward tag_prefix bytes 0 in
-    let pre = if start > 16 then Some (String.sub bytes 0 (start - 16)) else None in
-    let tag_data = String.sub bytes start (String.length bytes - start) in
-    if String.length tag_data mod 8 == 0 then
-      let rec find_versions bytes acc =
-        match String.length bytes with
-        | 0 -> List.rev acc
-        | _ ->
-          let rest = String.sub bytes 8 (String.length bytes - 8) in
-          match String.sub bytes 0 8 with
-          | "  \t\t  \t " -> find_versions rest (`V2 :: acc)
-          | "  \t\t  \t\t" -> find_versions rest (`V3 :: acc)
-          | _ -> find_versions rest acc
-      in
-      let vs = find_versions tag_data [] in
-      `PlainTag (vs, pre)
-    else
-      `String bytes
-  else
-    `String bytes
-
 let wrap_b64string = function
   | [] -> None
   | msgs ->
@@ -331,7 +251,7 @@ let wrap_b64string = function
 
 (* session -> string -> (session * to_send * user_msg * data_received * cleartext_received) *)
 let handle (ctx : session) bytes =
-  match classify bytes with
+  match Parser.classify_input bytes with
   | `PlainTag (versions, text) ->
     Printf.printf "received plaintag!\n" ;
     let ctx, out, warn = handle_whitespace_tag ctx versions in
@@ -340,10 +260,10 @@ let handle (ctx : session) bytes =
     Printf.printf "received query!\n" ;
     let ctx, out = handle_query ctx versions in
     (ctx, wrap_b64string out, None, None, text)
-  | `Error message ->
+  | `Error (message, text) ->
     Printf.printf "received error!\n" ;
     let out = handle_error ctx in
-    (ctx, out, None, None, Some message)
+    (ctx, out, Some ("Error: " ^ message), None, text)
   | `Data (bytes, message) ->
     Printf.printf "received data:" ; Cstruct.hexdump bytes ;
     let ctx, out, enc = handle_data ctx bytes in

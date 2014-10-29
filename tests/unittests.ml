@@ -13,14 +13,14 @@ let parse_query (input, (output, rest)) _ =
 let query_parser_tests =
   (* these are from protocol-v3-4.0.0.html (ignoring version 1, 4, x) *)
   List.map parse_query
-           [ ("?OTRv2?", ([`V2], None)) ;
-             ("?OTRv23?", ([`V2 ; `V3], None)) ;
-             ("?OTR?v2?", ([`V2], None)) ;
-             ("?OTRv24x?", ([`V2], None)) ;
-             ("?OTR?v24x?", ([`V2], None)) ;
-             ("?OTR?v?", ([], None)) ;
-             ("?OTRv?", ([], None)) ;
-             ("?OTRv2? bla", ([`V2], Some " bla")) ]
+           [ ("v2?", ([`V2], None)) ;
+             ("v23?", ([`V2 ; `V3], None)) ;
+             ("?v2?", ([`V2], None)) ;
+             ("v24x?", ([`V2], None)) ;
+             ("?v24x?", ([`V2], None)) ;
+             ("?v?", ([], None)) ;
+             ("v?", ([], None)) ;
+             ("v2? bla", ([`V2], Some " bla")) ]
 
 let parse_query_neg input _ =
   Parser.(match parse_query input with
@@ -29,8 +29,8 @@ let parse_query_neg input _ =
 
 let query_parser_neg_tests =
   List.map parse_query_neg
-    [ "?OTR?" ; "?OTR" ; "?OTR?45?" ; "?OTR45?" ;
-      "?OTRblabalablabla" ; "?OTRv12345" ]
+    [ "?" ; "" ; "?45?" ; "45?" ;
+      "blabalablabla" ; "v12345" ]
 
 let query_tests =
   List.mapi (fun i f -> "Parse query " ^ string_of_int i >:: f)
