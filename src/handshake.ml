@@ -243,8 +243,8 @@ let end_otr ctx =
   | MSGSTATE_FINISHED ->
      ({ ctx with state }, [], None)
 
-let maybe_concat prefix postfix =
-  match prefix, postfix with
+let maybe_concat pre post =
+  match pre, post with
   | None, None -> None
   | Some pre, Some post -> Some ("before: " ^ pre ^ " after: " ^ post)
   | Some pre, None -> Some pre
@@ -259,32 +259,51 @@ let classify bytes =
   and tag_prefix = Str.regexp_string " \t  \t\t\t\t \t \t \t  "
   in
 
+  let split str idx =
+    if idx > 0 then
+      let pre = Some (String.sub str 0 idx)
+      and idx' = succ idx
+      and l = String.length str
+      in
+      if idx' < l then
+        (pre, Some (String.(sub str idx' (l - idx'))))
+      else
+        (pre, None)
+    else
+      (None, Some str)
+  in
+
   if Str.string_match otr_mark bytes 0 then
-    let start = 5 + Str.search_forward otr_mark bytes 0 in
-    let stop = String.index_from bytes start '.' in
-    let b64data = String.sub bytes start (stop - start) in
-    let leftover =
-      let prefix = if start > 5 then Some (String.sub bytes 0 (start - 5)) else None in
-      let len = String.length bytes in
-      let postfix = if stop + 1 < len then Some (String.sub bytes stop (len - stop)) else None in
-      maybe_concat prefix postfix
-    in
-    `Data (Nocrypto.Base64.decode (Cstruct.of_string b64data), leftover)
+    let start = Str.search_forward otr_mark bytes 0 in
+    match split bytes start with
+    | pre, Some data ->
+      begin
+        try
+          ( match split data (String.index data '.') with
+            | Some data, post ->
+              let b64data = Cstruct.(shift (of_string data) 5) in
+              let leftover = maybe_concat pre post in
+              `Data (Nocrypto.Base64.decode b64data, leftover)
+            | None, leftover -> `String bytes )
+        with Not_found -> `String bytes (* TODO: fragmentation *)
+      end
+    | _ -> `String bytes
   else if Str.string_match otr_err_mark bytes 0 then
     `Error bytes
   else if Str.string_match otr_query_mark bytes 0 then
     let start = Str.search_forward otr_query_mark bytes 0 in
-    let data = String.sub bytes start (String.length bytes - start) in
-    match Parser.parse_query data with
-    | Parser.Or_error.Ok (versions, post) ->
-      let prefix = if start > 0 then Some (String.sub bytes 0 start) else None in
-      let text = maybe_concat prefix post in
-      `Query (versions, text)
-    | Parser.Or_error.Error _ ->
-      `String bytes
+    match split bytes start with
+    | pre, Some data ->
+      ( match Parser.parse_query data with
+        | Parser.Or_error.Ok (versions, post) ->
+          let text = maybe_concat pre post in
+          `Query (versions, text)
+        | Parser.Or_error.Error _ ->
+          `String bytes )
+    | _ -> `String bytes
   else if Str.string_match tag_prefix bytes 0 then
     let start = 16 + Str.search_forward tag_prefix bytes 0 in
-    let prefix = if start > 16 then Some (String.sub bytes 0 (start - 16)) else None in
+    let pre = if start > 16 then Some (String.sub bytes 0 (start - 16)) else None in
     let tag_data = String.sub bytes start (String.length bytes - start) in
     if String.length tag_data mod 8 == 0 then
       let rec find_versions bytes acc =
@@ -298,7 +317,7 @@ let classify bytes =
           | _ -> find_versions rest acc
       in
       let vs = find_versions tag_data [] in
-      `PlainTag (vs, prefix)
+      `PlainTag (vs, pre)
     else
       `String bytes
   else
