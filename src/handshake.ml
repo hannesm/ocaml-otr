@@ -269,7 +269,10 @@ let handle (ctx : session) bytes =
     let ctx, out, enc = handle_data ctx bytes in
     (ctx, wrap_b64string out, None, enc, message)
   | `String message ->
-    Printf.printf "received string!" ; Cstruct.(hexdump (of_string message)) ;
+    Printf.printf "received plain string! %s\n" message ;
     let ctx, warn = handle_cleartext ctx in
     (ctx, None, warn, None, Some message)
-
+  | `ParseError (warn, message) ->
+    Printf.printf "parse error! %s (input %s)\n" warn message ;
+    let ctx, warn = handle_cleartext ctx in
+    (ctx, None, warn, None, Some message)

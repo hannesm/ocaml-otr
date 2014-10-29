@@ -87,12 +87,13 @@ let classify_input bytes =
   | Ok (pre, data) ->
     begin
       try
-        ( match string_split data (String.index data '.') with
-          | Some data, post ->
-            let b64data = Cstruct.of_string data in
-            `Data (Nocrypto.Base64.decode b64data, maybe_concat pre post)
-          | None, _ -> `String bytes )
-      with Not_found -> `String bytes (* TODO: fragmentation *)
+        match string_split data (String.index data '.') with
+        | Some data, post ->
+          let b64data = Cstruct.of_string data in
+          `Data (Nocrypto.Base64.decode b64data, maybe_concat pre post)
+        | None, _ -> `ParseError ("empty OTR message", bytes)
+      with Not_found -> `ParseError ("malformed OTR message", bytes)
+      (* TODO: fragmentation *)
     end
   | Error _ -> match re_match otr_err_mark bytes with
     | Ok (pre, data) -> `Error (data, pre)
@@ -100,7 +101,7 @@ let classify_input bytes =
       | Ok (pre, data) ->
         ( match parse_query data with
           | Ok (versions, post) -> `Query (versions, maybe_concat pre post)
-          | Error _ -> `String bytes )
+          | Error _ -> `ParseError ("Malformed OTR query", bytes) )
       | Error _ -> match re_match tag_prefix bytes with
         | Ok (pre, data) ->
           let len = String.length data in
@@ -114,7 +115,7 @@ let classify_input bytes =
               | "  \t\t  \t\t" -> find_mark (idx + 8) (`V3 :: acc)
               | _ -> find_mark (idx + 8) acc
           in
-          (try find_mark 0 [] with Not_found -> `String bytes)
+          (try find_mark 0 [] with Not_found -> `ParseError ("Malformed tag", bytes) )
         | Error _ -> `String bytes
 
 (* real OTR data parsing *)
