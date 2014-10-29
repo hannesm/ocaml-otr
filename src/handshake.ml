@@ -161,23 +161,37 @@ let handle_auth ctx bytes =
     | Parser.Or_error.Ok  (version, typ, instances, buf) ->
       let ctx = match ctx.state.auth_state with
         | AUTHSTATE_NONE -> { ctx with version }
-        | _ -> assert (version = ctx.version) ; ctx
+        | _ -> if version = ctx.version then ctx else
+            (Printf.printf "wrong version received!\n%!"; assert false)
       in
+      Printf.printf "handling version %d\n%!" (int_of_version ctx.version) ;
       let ctx = match version, instances, ctx.instances with
         | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) when mysend = 0l ->
-          assert (yourrecv = myrecv) ;
-          assert (yoursend > 0x100l) ;
-          { ctx with instances = Some (yoursend, myrecv) }
+          if (yourrecv = myrecv) && (yoursend > 0x100l) then
+            { ctx with instances = Some (yoursend, myrecv) }
+          else
+            (Printf.printf "something wrong with instances 1 (mine %d %d; yours %d%d)\n%!"
+               (Int32.to_int mysend) (Int32.to_int myrecv)
+               (Int32.to_int yoursend) (Int32.to_int yourrecv) ;
+             assert false)
         | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) ->
-          assert (yourrecv = myrecv) ;
-          assert (yoursend = mysend) ;
-          ctx
+          if (yourrecv = myrecv) && (yoursend = mysend) then
+            ctx
+          else
+            (Printf.printf "something wrong with instances 2 (mine %d %d; yours %d%d)\n%!"
+               (Int32.to_int mysend) (Int32.to_int myrecv)
+               (Int32.to_int yoursend) (Int32.to_int yourrecv) ;
+             assert false)
         | `V3, Some (yoursend, yourrecv), None ->
-          assert (yourrecv < 0x100l) ;
-          let myinstance = Crypto.instance_tag () in
-          { ctx with instances = Some (yoursend, myinstance) }
+          if (yourrecv < 0x100l) then
+            let myinstance = Crypto.instance_tag () in
+            { ctx with instances = Some (yoursend, myinstance) }
+          else
+            (Printf.printf "something wrong with instances 3 (yours %d%d)\n%!"
+               (Int32.to_int yoursend) (Int32.to_int yourrecv) ;
+             assert false)
         | `V2, _ , _ -> ctx
-        | _ -> assert false
+        | _ -> Printf.printf "wonky instances\n%!" ; assert false
       in
       begin
         match typ, ctx.state.auth_state with
