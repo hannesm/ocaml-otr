@@ -70,18 +70,20 @@ let re_match_exn re relen data =
   | pre, Some data -> (pre, String.(sub data relen (length data - relen)))
   | _ -> raise_unknown "re matched, but no data found"
 
-let re_match re relen data =
+let re_match (re, relen) data =
   try Ok (re_match_exn re relen data) with _ -> Error (Unknown "parse failed")
+
+
+let otr_mark, otr_err_mark, otr_query_mark, tag_prefix =
+  let re str = (Str.regexp_string str, String.length str) in
+  (re "?OTR:",
+   re "?OTR Error:",
+   re "?OTR",
+   re " \t  \t\t\t\t \t \t \t  ")
 
 (* TODO: fragmentation (',' as final character) *)
 let classify_input bytes =
-  let otr_mark = Str.regexp_string "?OTR:"
-  and otr_err_mark = Str.regexp_string "?OTR Error:"
-  and otr_query_mark = Str.regexp_string "?OTR"
-  and tag_prefix = Str.regexp_string " \t  \t\t\t\t \t \t \t  "
-  in
-
-  match re_match otr_mark 5 bytes with
+  match re_match otr_mark bytes with
   | Ok (pre, data) ->
     begin
       try
@@ -92,14 +94,14 @@ let classify_input bytes =
           | None, _ -> `String bytes )
       with Not_found -> `String bytes (* TODO: fragmentation *)
     end
-  | Error _ -> match re_match otr_err_mark 11 bytes with
+  | Error _ -> match re_match otr_err_mark bytes with
     | Ok (pre, data) -> `Error (data, pre)
-    | Error _ -> match re_match otr_query_mark 4 bytes with
+    | Error _ -> match re_match otr_query_mark bytes with
       | Ok (pre, data) ->
         ( match parse_query data with
           | Ok (versions, post) -> `Query (versions, maybe_concat pre post)
           | Error _ -> `String bytes )
-      | Error _ -> match re_match tag_prefix 16 bytes with
+      | Error _ -> match re_match tag_prefix bytes with
         | Ok (pre, data) ->
           let len = String.length data in
           let rec find_mark idx acc =
