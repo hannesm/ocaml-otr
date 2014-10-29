@@ -28,7 +28,9 @@ let parse_query_neg input _ =
       | Or_error.Error _ -> ())
 
 let query_parser_neg_tests =
-  List.map parse_query_neg [ "?OTR?" ; "?OTR" ; "?OTR?45?" ; "?OTR45?" ]
+  List.map parse_query_neg
+    [ "?OTR?" ; "?OTR" ; "?OTR?45?" ; "?OTR45?" ;
+      "?OTRblabalablabla" ; "?OTRv12345" ]
 
 let query_tests =
   List.mapi (fun i f -> "Parse query " ^ string_of_int i >:: f)
