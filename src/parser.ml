@@ -127,19 +127,19 @@ let decode_data buf =
 (*let decode_data = catch decode_data_exn*)
 
 
-let parse_auth version bytes =
-  ( match version_of_int (BE.get_uint16 bytes 0), version with
-    | None, _ -> raise_unknown "version"
-    | Some v, None -> return v
-    | Some v, Some v' -> assert (v = v') ; return v ) >>= fun version ->
-    ( match int_to_message_type (get_uint8 bytes 2) with
+let parse_auth bytes =
+  ( match version_of_int (BE.get_uint16 bytes 0) with
+    | None -> raise_unknown "version"
+    | Some v -> return v ) >>= fun version ->
+  ( match int_to_message_type (get_uint8 bytes 2) with
     | Some x -> return x
-    | None -> raise_unknown "message type" ) >|= fun typ ->
-  (version,
-   typ,
-   match version with
-   | `V2 -> shift bytes 3
-   | `V3 -> (* instance tags -- retrieve, compare, set *) shift bytes 11)
+    | None -> raise_unknown "message type" ) >>= fun typ ->
+  ( match version with
+    | `V2 -> return (None, shift bytes 3)
+    | `V3 ->
+      let instances = Some BE.(get_uint32 bytes 3, get_uint32 bytes 7) in
+      return (instances, shift bytes 11) ) >|= fun (instances, buf) ->
+  (version, typ, instances, buf)
 
 let parse_key buf =
   let tag, buf = split buf 2 in

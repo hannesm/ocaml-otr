@@ -33,9 +33,9 @@ let header version instances typ =
   set_uint8 buf 2 (message_type_to_int typ) ;
   (match version, instances with
    | `V2, None -> ()
-   | `V3, Some (our, their) ->
-     BE.set_uint32 buf 3 our ;
-     BE.set_uint32 buf 7 their
+   | `V3, Some (them, us) ->
+     BE.set_uint32 buf 3 us ;
+     BE.set_uint32 buf 7 them
    | _ -> assert false );
   buf
 

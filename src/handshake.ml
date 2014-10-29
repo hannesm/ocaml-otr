@@ -20,7 +20,7 @@ let select_version ours theirs =
 
 let instances = function
   | `V2 -> None
-  | `V3 -> Some (Crypto.instance_tag (), 0l)
+  | `V3 -> Some (0l, Crypto.instance_tag ())
 
 let maybe_commit ctx their_versions =
   match select_version ctx.config.versions their_versions with
@@ -153,18 +153,35 @@ let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
   { ctx with state }
 
+
+
 let handle_auth ctx bytes =
   let open Packet in
-  let version = match ctx.state.auth_state with
-    | AUTHSTATE_NONE -> None
-    | _ -> Some ctx.version
-  in
-  match Parser.parse_auth version bytes with
-    | Parser.Or_error.Ok  (version, typ, buf) ->
+  match Parser.parse_auth bytes with
+    | Parser.Or_error.Ok  (version, typ, instances, buf) ->
+      let ctx = match ctx.state.auth_state with
+        | AUTHSTATE_NONE -> { ctx with version }
+        | _ -> assert (version = ctx.version) ; ctx
+      in
+      let ctx = match version, instances, ctx.instances with
+        | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) when mysend = 0l ->
+          assert (yourrecv = myrecv) ;
+          assert (yoursend > 0x100l) ;
+          { ctx with instances = Some (yoursend, myrecv) }
+        | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) ->
+          assert (yourrecv = myrecv) ;
+          assert (yoursend = mysend) ;
+          ctx
+        | `V3, Some (yoursend, yourrecv), None ->
+          assert (yourrecv < 0x100l) ;
+          let myinstance = Crypto.instance_tag () in
+          { ctx with instances = Some (yoursend, myinstance) }
+        | `V2, _ , _ -> ctx
+        | _ -> assert false
+      in
       begin
         match typ, ctx.state.auth_state with
         | DH_COMMIT, AUTHSTATE_NONE ->
-          let ctx = { ctx with version } in
           (* send dh_key,  go to AWAITING_REVEALSIG *)
           let ctx, dh_key = dh_key_await_revealsig ctx buf in
           (ctx, [dh_key], None)
