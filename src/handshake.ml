@@ -155,53 +155,62 @@ let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
 
 let handle_auth ctx bytes =
   let open Packet in
-  let typ, buf = Parser.parse_auth ctx bytes in
-  match typ, ctx.state.auth_state with
-  | DH_COMMIT, AUTHSTATE_NONE ->
-    (* send dh_key,  go to AWAITING_REVEALSIG *)
-    let ctx, dh_key = dh_key_await_revealsig ctx buf in
-    (ctx, [dh_key], None)
-  | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
-    (* compare hash *)
-    let their_hash = Cstruct.sub buf (Cstruct.len buf - 32) 32 in
-    if Crypto.hash_gt h their_hash then
-      (ctx, [dh_c], None)
-    else
-      let ctx, dh_key = dh_key_await_revealsig ctx buf in
-      (ctx, [dh_key], None)
-  | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ({ gy } as dh_params, _) ->
-    (* use this dh_commit ; resend dh_key *)
-    let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG (dh_params, buf) } in
-    let out = Builder.dh_key ctx.version ctx.instances gy in
-    ({ ctx with state }, [out], None)
-  | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
-    (* send dh_key, go to AWAITING_REVEALSIG *)
-    let ctx, dh_key = dh_key_await_revealsig ctx buf in
-    (ctx, [dh_key], None)
+  let version = match ctx.state.auth_state with
+    | AUTHSTATE_NONE -> None
+    | _ -> Some ctx.version
+  in
+  match Parser.parse_auth version bytes with
+    | Parser.Or_error.Ok  (version, typ, buf) ->
+      begin
+        match typ, ctx.state.auth_state with
+        | DH_COMMIT, AUTHSTATE_NONE ->
+          let ctx = { ctx with version } in
+          (* send dh_key,  go to AWAITING_REVEALSIG *)
+          let ctx, dh_key = dh_key_await_revealsig ctx buf in
+          (ctx, [dh_key], None)
+        | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
+          (* compare hash *)
+          let their_hash = Cstruct.sub buf (Cstruct.len buf - 32) 32 in
+          if Crypto.hash_gt h their_hash then
+            (ctx, [dh_c], None)
+          else
+            let ctx, dh_key = dh_key_await_revealsig ctx buf in
+            (ctx, [dh_key], None)
+        | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ({ gy } as dh_params, _) ->
+          (* use this dh_commit ; resend dh_key *)
+          let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG (dh_params, buf) } in
+          let out = Builder.dh_key ctx.version ctx.instances gy in
+          ({ ctx with state }, [out], None)
+        | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
+          (* send dh_key, go to AWAITING_REVEALSIG *)
+          let ctx, dh_key = dh_key_await_revealsig ctx buf in
+          (ctx, [dh_key], None)
 
-  | DH_KEY, AUTHSTATE_AWAITING_DHKEY (_, _, dh_params, r) ->
-    (* reveal_sig -> AUTHSTATE_AWAITING_SIG *)
-    let ctx, reveal = check_key_reveal_sig ctx dh_params r buf in
-    (ctx, [reveal], None)
+        | DH_KEY, AUTHSTATE_AWAITING_DHKEY (_, _, dh_params, r) ->
+          (* reveal_sig -> AUTHSTATE_AWAITING_SIG *)
+          let ctx, reveal = check_key_reveal_sig ctx dh_params r buf in
+          (ctx, [reveal], None)
 
-  | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, { gy }) ->
-    (* same dh_key? -> retransmit REVEAL_SIG *)
-    if Nocrypto.Uncommon.Cs.equal gy buf then
-      (ctx, [reveal_sig], None)
-    else
-      (ctx, [], None)
+        | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, { gy }) ->
+          (* same dh_key? -> retransmit REVEAL_SIG *)
+          if Nocrypto.Uncommon.Cs.equal gy buf then
+            (ctx, [reveal_sig], None)
+          else
+            (ctx, [], None)
 
-  | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
-    (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-    let ctx, out = check_reveal_send_sig ctx dh_params dh_commit buf in
-    (ctx, [out], None)
+        | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
+          (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
+          let ctx, out = check_reveal_send_sig ctx dh_params dh_commit buf in
+          (ctx, [out], None)
 
-  | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params) ->
-    (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-    let ctx = check_sig ctx keys dh_params buf in
-    (ctx, [], None)
+        | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params) ->
+          (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
+          let ctx = check_sig ctx keys dh_params buf in
+          (ctx, [], None)
 
-  | _ -> (ctx, [], None)
+        | _ -> (ctx, [], None)
+      end
+    | Parser.Or_error.Error _ -> (ctx, [], None)
 
 
 let handle_data ctx bytes =

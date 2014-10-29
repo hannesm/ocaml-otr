@@ -29,7 +29,7 @@ let header version instances typ =
     | `V2 -> create 3
     | `V3 -> create 11
   in
-  BE.set_uint16 buf 0 (packet_version_to_int (packet_version_of_version version)) ;
+  BE.set_uint16 buf 0 (int_of_version version) ;
   set_uint8 buf 2 (message_type_to_int typ) ;
   (match version, instances with
    | `V2, None -> ()

@@ -127,20 +127,17 @@ let decode_data buf =
 (*let decode_data = catch decode_data_exn*)
 
 
-let assert_versions theirs ours =
-  match int_to_packet_version theirs with
-  | Some version -> assert (version_of_packet_version version = ours)
-  | None -> assert false
-
-let parse_auth ctx bytes =
-  let theirs = BE.get_uint16 bytes 0 in
-  assert_versions theirs ctx.version ;
-  let typ = match int_to_message_type (get_uint8 bytes 2) with
-    | Some x -> x
-    | None -> assert false
-  in
-  (typ,
-   match ctx.version with
+let parse_auth version bytes =
+  ( match version_of_int (BE.get_uint16 bytes 0), version with
+    | None, _ -> raise_unknown "version"
+    | Some v, None -> return v
+    | Some v, Some v' -> assert (v = v') ; return v ) >>= fun version ->
+    ( match int_to_message_type (get_uint8 bytes 2) with
+    | Some x -> return x
+    | None -> raise_unknown "message type" ) >|= fun typ ->
+  (version,
+   typ,
+   match version with
    | `V2 -> shift bytes 3
    | `V3 -> (* instance tags -- retrieve, compare, set *) shift bytes 11)
 
