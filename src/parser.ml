@@ -3,34 +3,55 @@ open Packet
 open Cstruct
 open State
 
+type error =
+  | TrailingBytes of string
+  | WrongLength   of string
+  | Unknown       of string
+  | Underflow
+
+module Or_error =
+  Control.Or_error_make (struct type err = error end)
+open Or_error
+
+exception Parser_error of error
+
+let raise_unknown msg        = raise (Parser_error (Unknown msg))
+and raise_wrong_length msg   = raise (Parser_error (WrongLength msg))
+and raise_trailing_bytes msg = raise (Parser_error (TrailingBytes msg))
+
+let catch f x =
+  try return (f x) with
+  | Parser_error err   -> fail err
+  | Invalid_argument _ -> fail Underflow
+
 let decode_data buf =
   let size = BE.get_uint32 buf 0 in
   let intsize = Int32.to_int size in
   (sub buf 4 intsize, shift buf (4 + intsize))
 
-let parse_query str =
-  match String.length str with
-  | 1 when String.get str 0 = '?' -> ([], None)
-  | x when x > 1 ->
-    let rec parse_v str acc idx =
-      match String.get str idx with
-      | '2' -> parse_v str (`V2 :: acc) (idx + 1)
-      | '3' -> parse_v str (`V3 :: acc) (idx + 1)
-      | '?' ->
-        let leftover =
-          let l = String.length str in
-          let r = succ idx in
-          if l > r then Some (String.sub str r (l - r)) else None
-        in
-        (List.rev acc, leftover)
-      | _ -> parse_v str acc (idx + 1)
-    in
-    (match String.get str 0, String.get str 1 with
-     | '?', 'v' -> parse_v str [] 2
-     | 'v', _ -> parse_v str [] 1
-     | _ -> ([], Some str) )
+(*let decode_data = catch decode_data_exn*)
 
-  | x -> ([], Some str)
+(* input is a string which starts with ?OTR *)
+let parse_query_exn str =
+  let rec parse_v idx acc =
+    match String.get str idx with
+    | '2' -> parse_v (succ idx) (`V2 :: acc)
+    | '3' -> parse_v (succ idx) (`V3 :: acc)
+    | '?' ->
+      let rst =
+        let l = String.length str in
+        let next = succ idx in
+        if l > next then Some (String.sub str next (l - next)) else None
+      in
+      (List.rev acc, rst)
+    | _ -> parse_v (succ idx) acc
+  in
+  match String.(get str 4, get str 5) with
+  | '?', 'v' -> parse_v 6 []
+  | 'v', _ -> parse_v 5 []
+  | _ -> raise_unknown "no usable version found"
+
+let parse_query = catch parse_query_exn
 
 let assert_versions theirs ours =
   match int_to_packet_version theirs with

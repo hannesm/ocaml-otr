@@ -273,12 +273,15 @@ let classify bytes =
   else if Str.string_match otr_err_mark bytes 0 then
     `Error bytes
   else if Str.string_match otr_query_mark bytes 0 then
-    let start = 4 + Str.search_forward otr_query_mark bytes 0 in
+    let start = Str.search_forward otr_query_mark bytes 0 in
     let data = String.sub bytes start (String.length bytes - start) in
-    let versions, post = Parser.parse_query data in
-    let prefix = if start > 4 then Some (String.sub bytes 0 (start - 4)) else None in
-    let text = maybe_concat prefix post in
-    `Query (versions, text)
+    match Parser.parse_query data with
+    | Parser.Or_error.Ok (versions, post) ->
+      let prefix = if start > 0 then Some (String.sub bytes 0 start) else None in
+      let text = maybe_concat prefix post in
+      `Query (versions, text)
+    | Parser.Or_error.Error _ ->
+      `String bytes
   else if Str.string_match tag_prefix bytes 0 then
     let start = 16 + Str.search_forward tag_prefix bytes 0 in
     let prefix = if start > 16 then Some (String.sub bytes 0 (start - 16)) else None in
