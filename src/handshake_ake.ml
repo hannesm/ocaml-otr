@@ -119,13 +119,13 @@ let handle_auth ctx bytes =
       Printf.printf "handling version %d\n%!" (int_of_version ctx.version) ;
       let ctx = match version, instances, ctx.instances with
         | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) when mysend = 0l ->
-          assert ((yourrecv = myrecv) && (yoursend > 0x100l)) ;
+          assert ((yourrecv = myrecv) && (Int32.shift_right_logical yoursend 8 > 0l)) ;
           { ctx with instances = Some (yoursend, myrecv) }
         | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) ->
           assert ((yourrecv = myrecv) && (yoursend = mysend)) ;
           ctx
         | `V3, Some (yoursend, yourrecv), None ->
-          assert (yourrecv < 0x100l) ;
+          assert (Int32.shift_right_logical yourrecv 8 = 0l) ;
           let myinstance = instance_tag () in
           { ctx with instances = Some (yoursend, myinstance) }
         | `V2, _ , _ -> ctx
