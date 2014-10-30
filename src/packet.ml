@@ -1,6 +1,7 @@
 
 cenum message_type {
   DH_COMMIT        = 2 ;
+  DATA             = 3 ;
   DH_KEY           = 0x0a ;
   REVEAL_SIGNATURE = 0x11 ;
   SIGNATURE        = 0x12 ;
