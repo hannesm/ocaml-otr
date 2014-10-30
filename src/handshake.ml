@@ -35,10 +35,26 @@ let handle_error ctx =
   else
     None
 
+let handle_encrypted_data ctx bytes =
+  match Parser.parse_check_data ctx.version ctx.instances bytes with
+  | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
+    Printf.printf "received data message!" ; Cstruct.hexdump encdata ;
+    Printf.printf "reveal" ; Cstruct.hexdump reveal ;
+    Printf.printf "mac" ; Cstruct.hexdump mac ;
+    Printf.printf "ctr" ; Cstruct.hexdump ctr ;
+    Printf.printf "s_keyid %s r_keyid %s flags %d\n"
+      (Int32.to_string s_keyid) (Int32.to_string r_keyid) flags;
+    (ctx, [], None, None)
+  | Parser.Error _ ->
+    (ctx, [], Some "malformed data message received", None)
+
 let handle_data ctx bytes =
   match ctx.state.message_state with
-  | MSGSTATE_PLAINTEXT -> Handshake_ake.handle_auth ctx bytes
-  | _ -> (ctx, [], None)
+  | MSGSTATE_PLAINTEXT ->
+    let ctx, out, enc = Handshake_ake.handle_auth ctx bytes in
+    (ctx, out, None, enc)
+  | MSGSTATE_ENCRYPTED -> handle_encrypted_data ctx bytes
+  | _ -> (ctx, [], Some ("couldn't handle data"), None)
 
 (* operations triggered by a user *)
 let start_otr ctx =
@@ -96,8 +112,8 @@ let handle (ctx : session) bytes =
     (ctx, out, Some ("Error: " ^ message), None, text)
   | `Data (bytes, message) ->
     Printf.printf "received data:" ; Cstruct.hexdump bytes ;
-    let ctx, out, enc = handle_data ctx bytes in
-    (ctx, wrap_b64string out, None, enc, message)
+    let ctx, out, warn, enc = handle_data ctx bytes in
+    (ctx, wrap_b64string out, warn, enc, message)
   | `String message ->
     Printf.printf "received plain string! %s\n" message ;
     let ctx, warn = handle_cleartext ctx in
