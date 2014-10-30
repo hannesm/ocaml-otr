@@ -4,28 +4,22 @@ open Handshake_utils
 
 let handle_cleartext ctx =
   let warn = match ctx.state.message_state with
-    | MSGSTATE_PLAINTEXT ->
-      if List.mem `REQUIRE_ENCRYPTION ctx.config.policies then
-         Some "unencrypted data"
-       else
-         None
-    | MSGSTATE_ENCRYPTED | MSGSTATE_FINISHED ->
+    | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
       Some "unencrypted data"
+    | MSGSTATE_ENCRYPTED | MSGSTATE_FINISHED -> Some "unencrypted data"
+    | MSGSTATE_PLAINTEXT -> None
   in
   (ctx, warn)
 
 let handle_whitespace_tag ctx their_versions =
   let warn = match ctx.state.message_state with
-    | MSGSTATE_PLAINTEXT ->
-      if List.mem `REQUIRE_ENCRYPTION ctx.config.policies then
-        Some "unencrypted data"
-      else
-        None
-    | MSGSTATE_ENCRYPTED | MSGSTATE_FINISHED ->
+    | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
       Some "unencrypted data"
+    | MSGSTATE_ENCRYPTED | MSGSTATE_FINISHED -> Some "unencrypted data"
+    | MSGSTATE_PLAINTEXT -> None
   in
   let ctx, data_out =
-    if List.mem `WHITESPACE_START_AKE ctx.config.policies then
+    if policy ctx `WHITESPACE_START_AKE then
       Handshake_ake.maybe_commit ctx their_versions
     else
       (ctx, [])
@@ -36,7 +30,7 @@ let handle_query ctx their_versions =
   Handshake_ake.maybe_commit ctx their_versions
 
 let handle_error ctx =
-  if List.mem `ERROR_START_AKE ctx.config.policies then
+  if policy ctx `ERROR_START_AKE then
     Some (Builder.query_message ctx.config.versions)
   else
     None
@@ -52,14 +46,14 @@ let start_otr ctx =
 
 let send_otr ctx data =
   match ctx.state.message_state with
-  | MSGSTATE_PLAINTEXT ->
-     if List.mem `REQUIRE_ENCRYPTION ctx.config.policies then
-       (ctx, [Builder.query_message ctx.config.versions], Some "didn't send message, there was no encrypted connection")
-     else if List.mem `SEND_WHITESPACE_TAG ctx.config.policies then
-       (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
-       (ctx, [Builder.tag ctx.config.versions ^ data], None)
-     else
-       (ctx, [data], None)
+  | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
+    (ctx,
+     [Builder.query_message ctx.config.versions],
+     Some "didn't send message, there was no encrypted connection")
+  | MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
+    (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
+    (ctx, [Builder.tag ctx.config.versions ^ data], None)
+  | MSGSTATE_PLAINTEXT -> (ctx, [data], None)
   | MSGSTATE_ENCRYPTED ->
 (*     let datum = Crypto.encrypt data in
      (* XXX: Store the plaintext message for possible retransmission. *)

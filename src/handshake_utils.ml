@@ -14,3 +14,5 @@ let select_version ours theirs =
 let instances = function
   | `V2 -> None
   | `V3 -> Some (0l, instance_tag ())
+
+let policy ctx p = List.mem p ctx.config.policies
