@@ -14,9 +14,9 @@ let dh_commit ctx their_versions =
     let instances = instances version in
     let dh_commit = Builder.dh_commit version instances gxmpi h in
     let dh_params = { secret ; gx ; gy = Cstruct.create 0 } in
-    let state = {
-      ctx.state with auth_state = AUTHSTATE_AWAITING_DHKEY (dh_commit, h, dh_params, r)
-    } in
+    let auth_state = AUTHSTATE_AWAITING_DHKEY (dh_commit, h, dh_params, r)
+    and message_state = MSGSTATE_PLAINTEXT in (* not entirely sure about this.. *)
+    let state = { auth_state ; message_state } in
     ({ ctx with version ; instances ; state }, [dh_commit])
 
 let dh_key_await_revealsig ctx buf =
