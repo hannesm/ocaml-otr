@@ -125,7 +125,7 @@ let decode_data buf =
 (*let decode_data = catch decode_data_exn*)
 
 
-let parse_auth bytes =
+let parse_header bytes =
   ( match version_of_int (BE.get_uint16 bytes 0) with
     | None -> raise_unknown "version"
     | Some v -> return v ) >>= fun version ->

@@ -110,7 +110,7 @@ let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
 
 let handle_auth ctx bytes =
   let open Packet in
-  match Parser.parse_auth bytes with
+  match Parser.parse_header bytes with
     | Parser.Ok  (version, typ, instances, buf) ->
       let ctx = match ctx.state.auth_state with
         | AUTHSTATE_NONE -> { ctx with version }
