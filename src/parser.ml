@@ -9,9 +9,7 @@ type error =
   | Unknown       of string
   | Underflow
 
-module Or_error =
-  Control.Or_error_make (struct type err = error end)
-open Or_error
+include Control.Or_error_make (struct type err = error end)
 
 exception Parser_error of error
 

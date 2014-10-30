@@ -5,10 +5,10 @@ open Otr.Parser
 
 let parse_query (input, (output, rest)) _ =
   Parser.(match parse_query input with
-      | Or_error.Ok (versions, left) ->
+      | Ok (versions, left) ->
         assert_equal output versions ;
         assert_equal rest left
-      | Or_error.Error _ -> assert_failure "expected different output")
+      | Error _ -> assert_failure "expected different output")
 
 let query_parser_tests =
   (* these are from protocol-v3-4.0.0.html (ignoring version 1, 4, x) *)
@@ -24,8 +24,8 @@ let query_parser_tests =
 
 let parse_query_neg input _ =
   Parser.(match parse_query input with
-      | Or_error.Ok _ -> assert_failure "expected different output"
-      | Or_error.Error _ -> ())
+      | Ok _ -> assert_failure "expected different output"
+      | Error _ -> ())
 
 let query_parser_neg_tests =
   List.map parse_query_neg

@@ -150,7 +150,7 @@ let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
 let handle_auth ctx bytes =
   let open Packet in
   match Parser.parse_auth bytes with
-    | Parser.Or_error.Ok  (version, typ, instances, buf) ->
+    | Parser.Ok  (version, typ, instances, buf) ->
       let ctx = match ctx.state.auth_state with
         | AUTHSTATE_NONE -> { ctx with version }
         | _ -> assert (version = ctx.version) ; ctx
@@ -218,7 +218,7 @@ let handle_auth ctx bytes =
 
         | _ -> (ctx, [], None)
       end
-    | Parser.Or_error.Error _ -> (ctx, [], None)
+    | Parser.Error _ -> (ctx, [], None)
 
 
 let handle_data ctx bytes =
