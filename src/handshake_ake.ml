@@ -125,9 +125,11 @@ let handle_auth ctx bytes =
           assert ((yourrecv = myrecv) && (yoursend = mysend)) ;
           ctx
         | `V3, Some (yoursend, yourrecv), None ->
-          assert (Int32.shift_right_logical yourrecv 8 = 0l) ;
-          let myinstance = instance_tag () in
-          { ctx with instances = Some (yoursend, myinstance) }
+          if Int32.shift_right_logical yourrecv 8 = 0l then
+            let myinstance = instance_tag () in
+            { ctx with instances = Some (yoursend, myinstance) }
+          else (* other side has an encrypted session with us, but we do not *)
+            ctx
         | `V2, _ , _ -> ctx
         | _ -> Printf.printf "wonky instances\n%!" ; assert false
       in
@@ -175,6 +177,10 @@ let handle_auth ctx bytes =
         | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params) ->
           (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
           let ctx = check_sig ctx keys dh_params buf in
+          (ctx, [], None)
+
+        | DATA, _ ->
+          Printf.printf "received data message while in plaintext mode, ignoring\n" ;
           (ctx, [], None)
 
         | _ -> (ctx, [], None)
