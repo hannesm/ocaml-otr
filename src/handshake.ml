@@ -1,5 +1,7 @@
 open State
 
+open Handshake_utils
+
 let handle_cleartext ctx =
   let warn = match ctx.state.message_state with
     | MSGSTATE_PLAINTEXT ->
@@ -11,16 +13,6 @@ let handle_cleartext ctx =
       Some "unencrypted data"
   in
   (ctx, warn)
-
-let select_version ours theirs =
-  let test v = List.mem v theirs in
-  match List.filter test ours with
-  | v::_ -> Some v
-  | [] -> None
-
-let instances = function
-  | `V2 -> None
-  | `V3 -> Some (0l, Crypto.instance_tag ())
 
 let maybe_commit ctx their_versions =
   match select_version ctx.config.versions their_versions with
@@ -173,7 +165,7 @@ let handle_auth ctx bytes =
           ctx
         | `V3, Some (yoursend, yourrecv), None ->
           assert (yourrecv < 0x100l) ;
-          let myinstance = Crypto.instance_tag () in
+          let myinstance = instance_tag () in
           { ctx with instances = Some (yoursend, myinstance) }
         | `V2, _ , _ -> ctx
         | _ -> Printf.printf "wonky instances\n%!" ; assert false

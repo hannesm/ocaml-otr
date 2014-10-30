@@ -3,11 +3,6 @@ open State
 
 open Nocrypto
 
-let instance_tag () =
-  (* 32 bit random, >= 0x00000100 *)
-  let tag = Cstruct.BE.get_uint32 (Rng.generate 4) 0 in
-  Int32.(logor tag 0x100l)
-
 let encode_mpi n =
   Builder.encode_data (Numeric.Z.to_cstruct_be n)
 
