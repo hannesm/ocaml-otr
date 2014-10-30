@@ -3,7 +3,7 @@ open State
 open Handshake_utils
 
 (* authentication handshake *)
-let maybe_commit ctx their_versions =
+let dh_commit ctx their_versions =
   match select_version ctx.config.versions their_versions with
   | None -> (* send error message no matching version! *) assert false
   | Some version ->

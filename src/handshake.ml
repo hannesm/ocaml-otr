@@ -20,14 +20,14 @@ let handle_whitespace_tag ctx their_versions =
   in
   let ctx, data_out =
     if policy ctx `WHITESPACE_START_AKE then
-      Handshake_ake.maybe_commit ctx their_versions
+      Handshake_ake.dh_commit ctx their_versions
     else
       (ctx, [])
   in
   (ctx, data_out, warn)
 
 let handle_query ctx their_versions =
-  Handshake_ake.maybe_commit ctx their_versions
+  Handshake_ake.dh_commit ctx their_versions
 
 let handle_error ctx =
   if policy ctx `ERROR_START_AKE then
