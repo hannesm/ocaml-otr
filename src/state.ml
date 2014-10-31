@@ -51,6 +51,8 @@ type session = {
   version : version ;
   state : state ;
   config : config ;
+  their_dsa : Nocrypto.Dsa.pub option ;
+  ssid : Cstruct.t ;
 }
 
 let (<?>) ma b = match ma with None -> b | Some a -> a
@@ -60,4 +62,4 @@ let empty_session ?policies ?versions ~dsa () =
   let versions = versions <?> [`V3 ; `V2] in
   let config = { policies ; versions ; dsa } in
   let state = { message_state = MSGSTATE_PLAINTEXT ; auth_state = AUTHSTATE_NONE } in
-  { instances = None ; version = `V3 ; state ; config }
+  { instances = None ; version = `V3 ; state ; config ; their_dsa = None ; ssid = Cstruct.create 0 }

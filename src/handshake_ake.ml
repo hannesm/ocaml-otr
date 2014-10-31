@@ -58,7 +58,7 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
     gx
   in
   let shared_secret = Crypto.dh_shared secret gx in
-  let { c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
+  let { ssid ; c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
   let mac' = Crypto.mac160 ~key:m2 enc_data in
   assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
   let pubb, keyidb =
@@ -68,6 +68,7 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
     let pubb = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
     let mb = Crypto.mac ~key:m1 [ gx ; gy ; Crypto.OtrDsa.to_wire pubb ; Builder.encode_int keyidb ] in
     assert (Crypto.OtrDsa.verify ~key:pubb sigb mb) ;
+    Printf.printf "PUBB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pubb) ;
     (pubb, keyidb)
   in
   (* pick keyida *)
@@ -83,9 +84,10 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
   in
   let m = Crypto.mac160 ~key:m2' enc in
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
-  ({ ctx with state }, Builder.signature ctx.version ctx.instances enc m)
+  ({ ctx with state ; their_dsa = Some pubb ; ssid },
+   Builder.signature ctx.version ctx.instances enc m)
 
-let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
+let check_sig ctx { ssid ; c' ; m1' ; m2' } { gx ; gy } signature =
   (* decrypt signature, verify it and macs *)
   let enc_data =
     let enc_data, mac = Parser.decode_data signature in
@@ -101,10 +103,11 @@ let check_sig ctx { c' ; m1' ; m2' } { gx ; gy } signature =
     let puba = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
     let ma = Crypto.mac ~key:m1' [ gy ; gx ; Crypto.OtrDsa.to_wire puba ; Builder.encode_int keyida ] in
     assert (Crypto.OtrDsa.verify ~key:puba siga ma) ;
+    Printf.printf "PUBA their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint puba) ;
     (puba, keyida)
   in
   let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
-  { ctx with state }
+  { ctx with state ; their_dsa = Some puba ; ssid }
 
 
 
