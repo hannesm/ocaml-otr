@@ -64,3 +64,11 @@ let reveal_signature version instances r enc_sig mac =
 let signature version instances enc mac =
   let header = header version instances SIGNATURE in
   header <+> encode_data enc <+> mac
+
+let data version instances keyida keyidb dh_y ctr data =
+  let header = header version instances DATA in
+  let keys = Cstruct.create 9 in
+  Cstruct.set_uint8 keys 0 0 ;
+  Cstruct.BE.set_uint32 keys 1 keyida ;
+  Cstruct.BE.set_uint32 keys 5 keyidb ;
+  header <+> keys <+> dh_y <+> ctr <+> encode_data data
