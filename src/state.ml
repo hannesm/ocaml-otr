@@ -15,9 +15,18 @@ type dh_params = {
   gy     : Cstruct.t
 }
 
+type encryption_keys = {
+  dh : dh_params ;
+  previous_dh : dh_params ;
+  our_keyid : int32 ;
+  y : Cstruct.t ;
+  previous_y : Cstruct.t ;
+  their_keyid : int32 ;
+}
+
 type message_state =
   | MSGSTATE_PLAINTEXT
-  | MSGSTATE_ENCRYPTED
+  | MSGSTATE_ENCRYPTED of encryption_keys
   | MSGSTATE_FINISHED
 
 type auth_state =
