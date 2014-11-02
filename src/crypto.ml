@@ -91,6 +91,8 @@ let mac160 ~key data =
   let buf = mac ~key [ Builder.encode_data data ] in
   Cstruct.sub buf 0 20
 
+let sha1mac = Hash.mac `SHA1
+
 let group = Dh.Group.oakley_5
 
 let gen_dh_secret () =
@@ -101,3 +103,9 @@ let dh_shared dh_secret message =
   let msg, empty = Parser.decode_data message in
   assert (Cstruct.len empty = 0);
   Dh.shared group dh_secret msg
+
+let mpi_g gx gy =
+  let x, _ = Parser.decode_data gx
+  and y, _ = Parser.decode_data gy
+  in
+  hash_gt x y
