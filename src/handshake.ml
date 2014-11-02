@@ -6,8 +6,8 @@ let handle_cleartext ctx =
   let warn = match ctx.state.message_state with
     | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
       Some "unencrypted data"
-    | MSGSTATE_ENCRYPTED | MSGSTATE_FINISHED -> Some "unencrypted data"
     | MSGSTATE_PLAINTEXT -> None
+    | MSGSTATE_ENCRYPTED _ | MSGSTATE_FINISHED -> Some "unencrypted data"
   in
   (ctx, warn)
 
@@ -15,8 +15,8 @@ let handle_whitespace_tag ctx their_versions =
   let warn = match ctx.state.message_state with
     | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
       Some "unencrypted data"
-    | MSGSTATE_ENCRYPTED | MSGSTATE_FINISHED -> Some "unencrypted data"
     | MSGSTATE_PLAINTEXT -> None
+    | MSGSTATE_ENCRYPTED _ | MSGSTATE_FINISHED -> Some "unencrypted data"
   in
   let ctx, data_out =
     if policy ctx `WHITESPACE_START_AKE then
@@ -35,16 +35,82 @@ let handle_error ctx =
   else
     None
 
-let handle_encrypted_data ctx bytes =
+let select_dh keys send recv =
+
+  let y =
+    if keys.their_keyid = send then
+      ( Printf.printf "using current y\n" ;
+        keys.y )
+    else
+      ( assert (keys.their_keyid = Int32.succ send) ;
+        assert (Cstruct.len keys.previous_y > 0) ;
+        Printf.printf "using previous y\n" ;
+        keys.previous_y )
+  in
+  let dh =
+    if keys.our_keyid = recv then
+      ( Printf.printf "using current dh\n" ;
+        keys.dh )
+    else
+      ( assert (keys.our_keyid = Int32.succ recv) ;
+        Printf.printf "using previous dh\n" ;
+        keys.previous_dh )
+  in
+  (dh, y)
+
+let dh_gen_secret () =
+  let secret, gx = Crypto.gen_dh_secret () in
+  { secret ; gx ; gy = Cstruct.create 0 }
+
+let update_keys keys s_keyid r_keyid dh_y =
+  let keys =
+    if keys.their_keyid = s_keyid then
+      ( Printf.printf "switching over y\n" ;
+        { keys with their_keyid = Int32.succ s_keyid ;
+                    previous_y = keys.y ;
+                    y = dh_y } )
+    else
+      (assert (keys.their_keyid = Int32.succ s_keyid) ;
+       keys)
+  in
+  if keys.our_keyid = r_keyid then
+    ( Printf.printf "new DH\n";
+      { keys with our_keyid = Int32.succ r_keyid ;
+                  previous_dh = keys.dh ;
+                  dh = dh_gen_secret () } )
+  else
+    (assert (keys.our_keyid = Int32.succ r_keyid) ;
+     keys)
+
+let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
   | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
-    Printf.printf "received data message!" ; Cstruct.hexdump encdata ;
-    Printf.printf "reveal" ; Cstruct.hexdump reveal ;
-    Printf.printf "mac" ; Cstruct.hexdump mac ;
-    Printf.printf "ctr" ; Cstruct.hexdump ctr ;
     Printf.printf "s_keyid %s r_keyid %s flags %d\n"
       (Int32.to_string s_keyid) (Int32.to_string r_keyid) flags;
-    (ctx, [], None, None)
+    Printf.printf "stored their %s our %s\n"
+      (Int32.to_string keys.their_keyid) (Int32.to_string keys.our_keyid);
+    Printf.printf "ctr" ; Cstruct.hexdump ctr ;
+    Printf.printf "message" ; Cstruct.hexdump encdata ;
+    Printf.printf "reveal %d\n" (Cstruct.len reveal) ; Cstruct.hexdump reveal ;
+    let {secret; gx}, gy = select_dh keys s_keyid r_keyid in
+    Printf.printf "got their gy" ; Cstruct.hexdump gy ;
+    let high = Crypto.mpi_g gx gy in
+    let shared = Crypto.dh_shared secret gy in
+    let sendaes, sendmac, recvaes, recvmac = Crypto.data_keys shared high in
+    let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
+    let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
+    let ctr = Nocrypto.Uncommon.Cs.(concat [ ctr ; create_with 8 0 ]) in
+    let dec = Crypto.crypt ~key:recvaes ~ctr encdata in
+    assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
+    (* might contain trailing 0 *)
+    Printf.printf "decdata" ; Cstruct.hexdump dec ;
+    let last = pred (Cstruct.len dec) in
+    let txt = if Cstruct.get_uint8 dec last = 0 then Cstruct.to_string (Cstruct.sub dec 0 last) else Cstruct.to_string dec in
+    (* retain some information: dh_y, ctr, data_keys *)
+    Printf.printf "storing y" ; Cstruct.hexdump dh_y ;
+    let keys = update_keys keys s_keyid r_keyid dh_y in
+    let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
+    ({ ctx with state }, [], None, Some txt)
   | Parser.Error _ ->
     (ctx, [], Some "malformed data message received", None)
 
@@ -53,8 +119,14 @@ let handle_data ctx bytes =
   | MSGSTATE_PLAINTEXT ->
     let ctx, out, enc = Handshake_ake.handle_auth ctx bytes in
     (ctx, out, None, enc)
-  | MSGSTATE_ENCRYPTED -> handle_encrypted_data ctx bytes
+  | MSGSTATE_ENCRYPTED keys -> handle_encrypted_data ctx keys bytes
   | _ -> (ctx, [], Some ("couldn't handle data"), None)
+
+let wrap_b64string = function
+  | [] -> None
+  | msgs ->
+    let encode = Nocrypto.(Base64.encode (Uncommon.Cs.concat msgs)) in
+    Some ("?OTR:" ^ Cstruct.to_string encode ^ ".")
 
 (* operations triggered by a user *)
 let start_otr ctx =
@@ -70,11 +142,24 @@ let send_otr ctx data =
     (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
     (ctx, [Builder.tag ctx.config.versions ^ data], None)
   | MSGSTATE_PLAINTEXT -> (ctx, [data], None)
-  | MSGSTATE_ENCRYPTED ->
-(*     let datum = Crypto.encrypt data in
-     (* XXX: Store the plaintext message for possible retransmission. *)
-     (s, [data datum], None) *)
-     (ctx, [], None)
+  | MSGSTATE_ENCRYPTED keys ->
+    let { secret; gx }, gy = (keys.previous_dh, keys.y) in
+    Printf.printf "using y" ; Cstruct.hexdump gy ;
+    Printf.printf "(gx)" ; Cstruct.hexdump gx ;
+    let high = Crypto.mpi_g gx gy in
+    let shared = Crypto.dh_shared secret gy in
+    let sendaes, sendmac, recvaes, recvmac = Crypto.data_keys shared high in
+    let ctr = 1L in
+    let ctrv = let b = Cstruct.create 8 in Cstruct.BE.set_uint64 b 0 ctr ; b in
+    let ctrf = Nocrypto.Uncommon.Cs.(concat [ ctrv ; create_with 8 0 ]) in
+    let enc = Crypto.crypt ~key:sendaes ~ctr:ctrf (Cstruct.of_string data) in
+    Printf.printf "sending with our %s their %s\n" Int32.(to_string (pred keys.our_keyid)) (Int32.to_string keys.their_keyid) ;
+    let data = Builder.data ctx.version ctx.instances (Int32.pred keys.our_keyid) keys.their_keyid keys.dh.gx ctrv enc in
+    let mac = Crypto.sha1mac ~key:sendmac data in
+    let out = wrap_b64string [ data ; mac ; Builder.encode_data (Cstruct.create 0)] in
+    let out = match out with | Some x -> [x] | None -> [] in
+    (ctx, out, None)
+(*      (ctx, [], None) *)
   | MSGSTATE_FINISHED ->
      (ctx, [], Some "message couldn't be sent since OTR session is finished.")
 
@@ -82,18 +167,12 @@ let end_otr ctx =
   let state = { ctx.state with message_state = MSGSTATE_PLAINTEXT } in
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT -> (ctx, [], None)
-  | MSGSTATE_ENCRYPTED ->
+  | MSGSTATE_ENCRYPTED _ ->
      (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
      (* let out = data TLV1 in *)
      ({ ctx with state }, [], None)
   | MSGSTATE_FINISHED ->
      ({ ctx with state }, [], None)
-
-let wrap_b64string = function
-  | [] -> None
-  | msgs ->
-    let encode = Nocrypto.(Base64.encode (Uncommon.Cs.concat msgs)) in
-    Some ("?OTR:" ^ Cstruct.to_string encode ^ ".")
 
 (* session -> string -> (session * to_send * user_msg * data_received * cleartext_received) *)
 let handle (ctx : session) bytes =
