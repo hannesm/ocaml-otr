@@ -65,19 +65,17 @@ let dh_gen_secret () =
 let update_keys keys s_keyid r_keyid dh_y =
   let keys =
     if keys.their_keyid = s_keyid then
-      ( Printf.printf "switching over y\n" ;
-        { keys with their_keyid = Int32.succ s_keyid ;
-                    previous_y = keys.y ;
-                    y = dh_y } )
+      { keys with their_keyid = Int32.succ s_keyid ;
+                  previous_y = keys.y ;
+                  y = dh_y }
     else
       (assert (keys.their_keyid = Int32.succ s_keyid) ;
        keys)
   in
   if keys.our_keyid = r_keyid then
-    ( Printf.printf "new DH\n";
-      { keys with our_keyid = Int32.succ r_keyid ;
-                  previous_dh = keys.dh ;
-                  dh = dh_gen_secret () } )
+    { keys with our_keyid = Int32.succ r_keyid ;
+                previous_dh = keys.dh ;
+                dh = dh_gen_secret () }
   else
     (assert (keys.our_keyid = Int32.succ r_keyid) ;
      keys)
@@ -85,29 +83,24 @@ let update_keys keys s_keyid r_keyid dh_y =
 let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
   | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
-    Printf.printf "s_keyid %s r_keyid %s flags %d\n"
-      (Int32.to_string s_keyid) (Int32.to_string r_keyid) flags;
-    Printf.printf "stored their %s our %s\n"
-      (Int32.to_string keys.their_keyid) (Int32.to_string keys.our_keyid);
-    Printf.printf "ctr" ; Cstruct.hexdump ctr ;
-    Printf.printf "message" ; Cstruct.hexdump encdata ;
     Printf.printf "reveal %d\n" (Cstruct.len reveal) ; Cstruct.hexdump reveal ;
     let {secret; gx}, gy = select_dh keys s_keyid r_keyid in
-    Printf.printf "got their gy" ; Cstruct.hexdump gy ;
     let high = Crypto.mpi_g gx gy in
     let shared = Crypto.dh_shared secret gy in
     let sendaes, sendmac, recvaes, recvmac = Crypto.data_keys shared high in
     let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
     let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
-    let ctr = Nocrypto.Uncommon.Cs.(concat [ ctr ; create_with 8 0 ]) in
-    let dec = Crypto.crypt ~key:recvaes ~ctr encdata in
+    let ctrcs =
+      let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
+      Cstruct.BE.set_uint64 buf 0 ctr ;
+      buf
+    in
+    let dec = Crypto.crypt ~key:recvaes ~ctr:ctrcs encdata in
     assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
     (* might contain trailing 0 *)
-    Printf.printf "decdata" ; Cstruct.hexdump dec ;
     let last = pred (Cstruct.len dec) in
     let txt = if Cstruct.get_uint8 dec last = 0 then Cstruct.to_string (Cstruct.sub dec 0 last) else Cstruct.to_string dec in
     (* retain some information: dh_y, ctr, data_keys *)
-    Printf.printf "storing y" ; Cstruct.hexdump dh_y ;
     let keys = update_keys keys s_keyid r_keyid dh_y in
     let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
     ({ ctx with state }, [], None, Some txt)
@@ -144,8 +137,6 @@ let send_otr ctx data =
   | MSGSTATE_PLAINTEXT -> (ctx, [data], None)
   | MSGSTATE_ENCRYPTED keys ->
     let { secret; gx }, gy = (keys.previous_dh, keys.y) in
-    Printf.printf "using y" ; Cstruct.hexdump gy ;
-    Printf.printf "(gx)" ; Cstruct.hexdump gx ;
     let high = Crypto.mpi_g gx gy in
     let shared = Crypto.dh_shared secret gy in
     let sendaes, sendmac, recvaes, recvmac = Crypto.data_keys shared high in
@@ -153,13 +144,11 @@ let send_otr ctx data =
     let ctrv = let b = Cstruct.create 8 in Cstruct.BE.set_uint64 b 0 ctr ; b in
     let ctrf = Nocrypto.Uncommon.Cs.(concat [ ctrv ; create_with 8 0 ]) in
     let enc = Crypto.crypt ~key:sendaes ~ctr:ctrf (Cstruct.of_string data) in
-    Printf.printf "sending with our %s their %s\n" Int32.(to_string (pred keys.our_keyid)) (Int32.to_string keys.their_keyid) ;
     let data = Builder.data ctx.version ctx.instances (Int32.pred keys.our_keyid) keys.their_keyid keys.dh.gx ctrv enc in
     let mac = Crypto.sha1mac ~key:sendmac data in
     let out = wrap_b64string [ data ; mac ; Builder.encode_data (Cstruct.create 0)] in
     let out = match out with | Some x -> [x] | None -> [] in
     (ctx, out, None)
-(*      (ctx, [], None) *)
   | MSGSTATE_FINISHED ->
      (ctx, [], Some "message couldn't be sent since OTR session is finished.")
 

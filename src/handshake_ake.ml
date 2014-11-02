@@ -141,7 +141,6 @@ let handle_auth ctx bytes =
         | AUTHSTATE_NONE -> { ctx with version }
         | _ -> assert (version = ctx.version) ; ctx
       in
-      Printf.printf "handling version %d\n%!" (int_of_version ctx.version) ;
       let ctx = match version, instances, ctx.instances with
         | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) when mysend = 0l ->
           assert ((yourrecv = myrecv) && (Int32.shift_right_logical yoursend 8 > 0l)) ;
