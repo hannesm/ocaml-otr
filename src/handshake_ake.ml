@@ -83,11 +83,23 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
     Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa
   in
   let m = Crypto.mac160 ~key:m2' enc in
-  let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
+  let keys =
+    let dh =
+      let secret, gx = Crypto.gen_dh_secret () in
+      { secret ; gx ; gy = Cstruct.create 0 }
+    and previous_y = Cstruct.create 0
+    in
+    { dh ; previous_dh = { secret ; gx = gy ; gy = gx } ; our_keyid = 2l ;
+      y = gx ; previous_y ; their_keyid = keyida }
+  in
+  let state = {
+    auth_state = AUTHSTATE_NONE ;
+    message_state = MSGSTATE_ENCRYPTED keys
+  } in
   ({ ctx with state ; their_dsa = Some pubb ; ssid },
    Builder.signature ctx.version ctx.instances enc m)
 
-let check_sig ctx { ssid ; c' ; m1' ; m2' } { gx ; gy } signature =
+let check_sig ctx { ssid ; c' ; m1' ; m2' } { secret ; gx ; gy } signature =
   (* decrypt signature, verify it and macs *)
   let enc_data =
     let enc_data, mac = Parser.decode_data signature in
@@ -106,10 +118,20 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } { gx ; gy } signature =
     Printf.printf "PUBA their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint puba) ;
     (puba, keyida)
   in
-  let state = { auth_state = AUTHSTATE_NONE ; message_state = MSGSTATE_ENCRYPTED } in
+  let keys =
+    let dh =
+      let secret, gx = Crypto.gen_dh_secret () in
+      { secret ; gx ; gy = Cstruct.create 0 }
+    and previous_y = Cstruct.create 0
+    in
+    { dh ; previous_dh = { secret ; gx ; gy } ; our_keyid = 2l ;
+      y = gy ; previous_y ; their_keyid = keyida }
+  in
+  let state = {
+    auth_state = AUTHSTATE_NONE ;
+    message_state = MSGSTATE_ENCRYPTED keys
+  } in
   { ctx with state ; their_dsa = Some puba ; ssid }
-
-
 
 let handle_auth ctx bytes =
   let open Packet in
