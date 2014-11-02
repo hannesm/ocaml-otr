@@ -53,7 +53,7 @@ let dh_commit version instances dhshared hashed =
 
 let dh_key version instances shared =
   let header = header version instances DH_KEY in
-  header <+> shared
+  header <+> encode_data shared
 
 let reveal_signature version instances r enc_sig mac =
   let header = header version instances REVEAL_SIGNATURE in
@@ -75,4 +75,4 @@ let data version instances keyida keyidb dh_y ctr data =
     BE.set_uint64 buf 0 ctr ;
     buf
   in
-  header <+> keys <+> dh_y <+> ctr <+> encode_data data
+  header <+> keys <+> encode_data dh_y <+> ctr <+> encode_data data

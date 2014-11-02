@@ -55,10 +55,6 @@ let select_dh keys send recv ctr =
   in
   (dh, y)
 
-let dh_gen_secret () =
-  let secret, gx = Crypto.gen_dh_secret () in
-  { secret ; gx }
-
 let update_keys keys s_keyid r_keyid dh_y ctr =
   let keys = { keys with their_ctr = ctr } in
   let keys =
@@ -75,7 +71,7 @@ let update_keys keys s_keyid r_keyid dh_y ctr =
   if keys.our_keyid = r_keyid then
     { keys with our_keyid = Int32.succ r_keyid ;
                 previous_dh = keys.dh ;
-                dh = dh_gen_secret () ;
+                dh = Crypto.gen_dh_secret () ;
                 our_ctr = 0L ;
     }
   else
@@ -85,9 +81,9 @@ let update_keys keys s_keyid r_keyid dh_y ctr =
 let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
   | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
-    let {secret; gx}, gy = select_dh keys s_keyid r_keyid ctr in
-    let high = Crypto.mpi_g gx gy in
-    let shared = Crypto.dh_shared secret gy in
+    let (dh_secret, gx), gy = select_dh keys s_keyid r_keyid ctr in
+    let high = Crypto.mpi_gt gx gy in
+    let shared = Crypto.dh_shared dh_secret gy in
     let _, _, recvaes, recvmac = Crypto.data_keys shared high in
     let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
     let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
@@ -137,9 +133,9 @@ let send_otr ctx data =
     (ctx, [Builder.tag ctx.config.versions ^ data], None)
   | MSGSTATE_PLAINTEXT -> (ctx, [data], None)
   | MSGSTATE_ENCRYPTED keys ->
-    let { secret; gx }, gy = (keys.previous_dh, keys.y) in
-    let high = Crypto.mpi_g gx gy in
-    let shared = Crypto.dh_shared secret gy in
+    let (dh_secret, gx), gy = (keys.previous_dh, keys.y) in
+    let high = Crypto.mpi_gt gx gy in
+    let shared = Crypto.dh_shared dh_secret gy in
     let sendaes, sendmac, _, _ = Crypto.data_keys shared high in
     let our_ctr = Int64.succ keys.our_ctr in
     let ctr =
@@ -148,7 +144,7 @@ let send_otr ctx data =
       buf
     in
     let enc = Crypto.crypt ~key:sendaes ~ctr (Cstruct.of_string data) in
-    let data = Builder.data ctx.version ctx.instances (Int32.pred keys.our_keyid) keys.their_keyid keys.dh.gx our_ctr enc in
+    let data = Builder.data ctx.version ctx.instances (Int32.pred keys.our_keyid) keys.their_keyid (snd keys.dh) our_ctr enc in
     let mac = Crypto.sha1mac ~key:sendmac data in
     let out = wrap_b64string [ data ; mac ; Builder.encode_data (Cstruct.create 0)] in
     let out = match out with | Some x -> [x] | None -> [] in

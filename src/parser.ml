@@ -167,15 +167,11 @@ let parse_dh_commit buf =
   assert (len hgx = 32) ;
   (gxenc, hgx)
 
-let ddata buf =
-  let l = BE.get_uint32 buf 0 in
-  split buf (Int32.to_int l + 4)
-
 let parse_data_body buf =
   let flags = get_uint8 buf 0
   and s_keyid = BE.get_uint32 buf 1
   and r_keyid = BE.get_uint32 buf 5
-  and dh_y, buf = ddata (shift buf 9)
+  and dh_y, buf = decode_data (shift buf 9)
   in
   let ctr = BE.get_uint64 buf 0
   and encdata, buf = decode_data (shift buf 8)

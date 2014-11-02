@@ -7,35 +7,39 @@ let dh_commit ctx their_versions =
   match select_version ctx.config.versions their_versions with
   | None -> (* send error message no matching version! *) assert false
   | Some version ->
-    let secret, gx = Crypto.gen_dh_secret () in
+    let dh_secret, gx = Crypto.gen_dh_secret () in
     let r = Crypto.gen_symmetric_key () in
-    let gxmpi = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gx in
-    let h = Crypto.hash gx in
+    let gxmpi = Builder.encode_data gx in
+    let gxmpi' = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxmpi in
+    let h = Crypto.hash gxmpi in
     let instances = instances version in
-    let dh_commit = Builder.dh_commit version instances gxmpi h in
-    let dh_params = { secret ; gx } in
-    let auth_state = AUTHSTATE_AWAITING_DHKEY (dh_commit, h, dh_params, r)
+    let dh_commit = Builder.dh_commit version instances gxmpi' h in
+    let auth_state = AUTHSTATE_AWAITING_DHKEY (dh_commit, h, (dh_secret, gx), r)
     and message_state = MSGSTATE_PLAINTEXT in (* not entirely sure about this.. *)
     let state = { auth_state ; message_state } in
     ({ ctx with version ; instances ; state }, [dh_commit])
 
 let dh_key_await_revealsig ctx buf =
-  let secret, gx = Crypto.gen_dh_secret () in
+  let dh_secret, gx = Crypto.gen_dh_secret () in
   let out = Builder.dh_key ctx.version ctx.instances gx in
-  let dh_params = { secret ; gx } in
-  let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG (dh_params, buf) } in
+  let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) } in
   ({ ctx with state }, out)
 
 let (<+>) = Nocrypto.Uncommon.Cs.append
 
-let check_key_reveal_sig ctx { secret ; gx } r gy =
-  let shared_secret = Crypto.dh_shared secret gy in
+let check_key_reveal_sig ctx (dh_secret, gx) r gy =
+  let gy, rst = Parser.decode_data gy in
+  assert (Cstruct.len rst = 0) ;
+  let shared_secret = Crypto.dh_shared dh_secret gy in
   let keys = Crypto.derive_keys shared_secret in
   let { c ; m1 ; m2 } = keys in
   let keyidb = 1l in
   let pubb = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
   let sigb =
-    let mb = Crypto.mac ~key:m1 [ gx ; gy ; pubb ; Builder.encode_int keyidb ] in
+    let gxmpi = Builder.encode_data gx
+    and gympi = Builder.encode_data gy
+    in
+    let mb = Crypto.mac ~key:m1 [ gxmpi ; gympi ; pubb ; Builder.encode_int keyidb ] in
     Crypto.OtrDsa.signature ~key:ctx.config.dsa mb
   in
   let enc_sig =
@@ -44,21 +48,21 @@ let check_key_reveal_sig ctx { secret ; gx } r gy =
   in
   let mac = Crypto.mac160 ~key:m2 enc_sig in
   let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
-  let dh_params = { secret ; gx } in
-  let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, dh_params, gy) } in
+  let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, (dh_secret, gx), gy) } in
   ({ ctx with state }, reveal_sig)
 
-let check_reveal_send_sig ctx dh_params dh_commit buf =
-  let secret, gy = (dh_params.secret, dh_params.gx) in
+let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   let r, enc_data, mac = Parser.parse_reveal buf in
   let gx =
     let gxenc, hgx = Parser.parse_dh_commit dh_commit in
     let gx = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxenc in
     let hgx' = Crypto.hash gx in
     assert (Nocrypto.Uncommon.Cs.equal hgx hgx') ;
+    let gx, rst = Parser.decode_data gx in
+    assert (Cstruct.len rst = 0) ;
     gx
   in
-  let shared_secret = Crypto.dh_shared secret gx in
+  let shared_secret = Crypto.dh_shared dh_secret gx in
   let { ssid ; c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
   let mac' = Crypto.mac160 ~key:m2 enc_data in
   assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
@@ -67,7 +71,10 @@ let check_reveal_send_sig ctx dh_params dh_commit buf =
     (* split into pubb, keyidb, sigb *)
     let (p,q,gg,y), keyidb, sigb = Parser.parse_signature_data xb in
     let pubb = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
-    let mb = Crypto.mac ~key:m1 [ gx ; gy ; Crypto.OtrDsa.to_wire pubb ; Builder.encode_int keyidb ] in
+    let gxmpi = Builder.encode_data gx
+    and gympi = Builder.encode_data gy
+    in
+    let mb = Crypto.mac ~key:m1 [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pubb ; Builder.encode_int keyidb ] in
     assert (Crypto.OtrDsa.verify ~key:pubb sigb mb) ;
     Printf.printf "PUBB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pubb) ;
     (pubb, keyidb)
@@ -76,7 +83,10 @@ let check_reveal_send_sig ctx dh_params dh_commit buf =
   let keyida = 1l in
   let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
   let siga =
-    let ma = Crypto.mac ~key:m1' [ gy ; gx ; puba ; Builder.encode_int keyida ] in
+    let gxmpi = Builder.encode_data gx
+    and gympi = Builder.encode_data gy
+    in
+    let ma = Crypto.mac ~key:m1' [ gympi ; gxmpi ; puba ; Builder.encode_int keyida ] in
     Crypto.OtrDsa.signature ~key:ctx.config.dsa ma
   in
   let enc =
@@ -85,12 +95,10 @@ let check_reveal_send_sig ctx dh_params dh_commit buf =
   in
   let m = Crypto.mac160 ~key:m2' enc in
   let keys =
-    let dh =
-      let secret, gx = Crypto.gen_dh_secret () in
-      { secret ; gx }
+    let dh = Crypto.gen_dh_secret ()
     and previous_y = Cstruct.create 0
     in
-    { dh ; previous_dh = { secret ; gx = gy } ; our_keyid = 2l ; our_ctr = 0L ;
+    { dh ; previous_dh = (dh_secret, gy) ; our_keyid = 2l ; our_ctr = 0L ;
       y = gx ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
   in
   let state = {
@@ -100,7 +108,7 @@ let check_reveal_send_sig ctx dh_params dh_commit buf =
   ({ ctx with state ; their_dsa = Some pubb ; ssid },
    Builder.signature ctx.version ctx.instances enc m)
 
-let check_sig ctx { ssid ; c' ; m1' ; m2' } { secret ; gx } gy signature =
+let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
   let enc_data =
     let enc_data, mac = Parser.decode_data signature in
@@ -114,18 +122,19 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } { secret ; gx } gy signature =
     (* split into puba keyida siga(Ma) *)
     let (p, q, gg, y), keyida, siga = Parser.parse_signature_data dec in
     let puba = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
-    let ma = Crypto.mac ~key:m1' [ gy ; gx ; Crypto.OtrDsa.to_wire puba ; Builder.encode_int keyida ] in
+    let gxmpi = Builder.encode_data gx
+    and gympi = Builder.encode_data gy
+    in
+    let ma = Crypto.mac ~key:m1' [ gympi ; gxmpi ; Crypto.OtrDsa.to_wire puba ; Builder.encode_int keyida ] in
     assert (Crypto.OtrDsa.verify ~key:puba siga ma) ;
     Printf.printf "PUBA their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint puba) ;
     (puba, keyida)
   in
   let keys =
-    let dh =
-      let secret, gx = Crypto.gen_dh_secret () in
-      { secret ; gx }
+    let dh = Crypto.gen_dh_secret ()
     and previous_y = Cstruct.create 0
     in
-    { dh ; previous_dh = { secret ; gx } ; our_keyid = 2l ; our_ctr = 0L ;
+    { dh ; previous_dh = (dh_secret, gx) ; our_keyid = 2l ; our_ctr = 0L ;
       y = gy ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
   in
   let state = {
@@ -167,14 +176,14 @@ let handle_auth ctx bytes =
         | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
           (* compare hash *)
           let their_hash = Cstruct.sub buf (Cstruct.len buf - 32) 32 in
-          if Crypto.hash_gt h their_hash then
+          if Crypto.mpi_gt h their_hash then
             (ctx, [dh_c], None)
           else
             let ctx, dh_key = dh_key_await_revealsig ctx buf in
             (ctx, [dh_key], None)
-        | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ({ gx } as dh_params, _) ->
+        | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
           (* use this dh_commit ; resend dh_key *)
-          let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG (dh_params, buf) } in
+          let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) } in
           let out = Builder.dh_key ctx.version ctx.instances gx in
           ({ ctx with state }, [out], None)
         | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->

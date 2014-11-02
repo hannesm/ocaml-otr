@@ -9,10 +9,7 @@ type keyblock = {
   m2'  : Cstruct.t ;
 }
 
-type dh_params = {
-  secret : Nocrypto.Dh.secret ;
-  gx     : Cstruct.t
-}
+type dh_params = (Nocrypto.Dh.secret * Cstruct.t)
 
 type encryption_keys = {
   dh : dh_params ;

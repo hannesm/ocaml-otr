@@ -12,7 +12,7 @@ let encode_message data =
 
 let (<+>) = Uncommon.Cs.append
 
-let hash_gt h1 h2 =
+let mpi_gt h1 h2 =
   Numeric.Z.(of_cstruct_be h1 > of_cstruct_be h2)
 
 module OtrDsa = struct
@@ -96,16 +96,7 @@ let sha1mac = Hash.mac `SHA1
 let group = Dh.Group.oakley_5
 
 let gen_dh_secret () =
-  let sec, shared = Dh.gen_secret group in
-  (sec, Builder.encode_data shared)
+  Dh.gen_secret group
 
-let dh_shared dh_secret message =
-  let msg, empty = Parser.decode_data message in
-  assert (Cstruct.len empty = 0);
-  Dh.shared group dh_secret msg
-
-let mpi_g gx gy =
-  let x, _ = Parser.decode_data gx
-  and y, _ = Parser.decode_data gy
-  in
-  hash_gt x y
+let dh_shared dh_secret gy =
+  Dh.shared group dh_secret gy
