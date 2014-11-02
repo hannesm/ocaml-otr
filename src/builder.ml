@@ -76,4 +76,4 @@ let data version instances keyida keyidb dh_y ctr data =
     Cstruct.BE.set_uint64 buf 0 ctr ;
     buf
   in
-  header <+> keys <+> dh_y <+> ctr <+> encode_data data in
+  header <+> keys <+> dh_y <+> ctr <+> encode_data data
