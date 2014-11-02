@@ -167,11 +167,15 @@ let parse_dh_commit buf =
   assert (len hgx = 32) ;
   (gxenc, hgx)
 
+let ddata buf =
+  let l = BE.get_uint32 buf 0 in
+  split buf (Int32.to_int l + 4)
+
 let parse_data_body buf =
   let flags = get_uint8 buf 0
   and s_keyid = BE.get_uint32 buf 1
   and r_keyid = BE.get_uint32 buf 5
-  and dh_y, buf = decode_data (shift buf 9)
+  and dh_y, buf = ddata (shift buf 9)
   in
   let ctr = sub buf 0 8
   and encdata, buf = decode_data (shift buf 8)
@@ -185,11 +189,11 @@ let parse_data_body buf =
 
 let parse_check_data version instances buf =
   parse_header buf >>= fun (version', typ, instances', buf) ->
-  guard (version = version') (Unknown "version") ;
+  guard (version = version') (Unknown "version") >>= fun () ->
   ( match version, instances, instances' with
     | `V3, Some (mya, myb), Some (youra, yourb) ->
-      guard (mya = youra) (Unknown "instance") ;
-      guard (myb = yourb) (Unknown "instance") ;
+      guard (mya = youra) (Unknown "instance") >>= fun () ->
+      guard (myb = yourb) (Unknown "instance")
     | `V2, _, _ -> return ()
     | _ -> fail (Unknown "instances")) >>= fun () ->
   guard (typ = DATA) (Unknown "type") >|= fun () ->
