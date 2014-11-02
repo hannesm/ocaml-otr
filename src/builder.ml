@@ -71,4 +71,9 @@ let data version instances keyida keyidb dh_y ctr data =
   Cstruct.set_uint8 keys 0 0 ;
   Cstruct.BE.set_uint32 keys 1 keyida ;
   Cstruct.BE.set_uint32 keys 5 keyidb ;
-  header <+> keys <+> dh_y <+> ctr <+> encode_data data
+  let ctr =
+    let buf = Cstruct.create 8 in
+    Cstruct.BE.set_uint64 buf 0 ctr ;
+    buf
+  in
+  header <+> keys <+> dh_y <+> ctr <+> encode_data data in

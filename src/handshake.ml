@@ -35,7 +35,7 @@ let handle_error ctx =
   else
     None
 
-let select_dh keys send recv =
+let select_dh keys send recv ctr =
 
   let y =
     if keys.their_keyid = send then
@@ -44,6 +44,7 @@ let select_dh keys send recv =
     else
       ( assert (keys.their_keyid = Int32.succ send) ;
         assert (Cstruct.len keys.previous_y > 0) ;
+        assert (ctr > keys.their_ctr ) ;
         Printf.printf "using previous y\n" ;
         keys.previous_y )
   in
@@ -69,7 +70,7 @@ let update_keys keys s_keyid r_keyid dh_y ctr =
       { keys with their_keyid = Int32.succ s_keyid ;
                   previous_y = keys.y ;
                   y = dh_y ;
-                  their_ctr = 0L
+                  their_ctr = 0L ;
       }
     else
       (assert (keys.their_keyid = Int32.succ s_keyid) ;
@@ -88,9 +89,8 @@ let update_keys keys s_keyid r_keyid dh_y ctr =
 let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
   | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
-    assert (ctr > keys.their_ctr) ;
     Printf.printf "reveal %d\n" (Cstruct.len reveal) ; Cstruct.hexdump reveal ;
-    let {secret; gx}, gy = select_dh keys s_keyid r_keyid in
+    let {secret; gx}, gy = select_dh keys s_keyid r_keyid ctr in
     let high = Crypto.mpi_g gx gy in
     let shared = Crypto.dh_shared secret gy in
     let sendaes, sendmac, recvaes, recvmac = Crypto.data_keys shared high in
@@ -146,15 +146,21 @@ let send_otr ctx data =
     let high = Crypto.mpi_g gx gy in
     let shared = Crypto.dh_shared secret gy in
     let sendaes, sendmac, recvaes, recvmac = Crypto.data_keys shared high in
-    let ctr = 1L in
-    let ctrv = let b = Cstruct.create 8 in Cstruct.BE.set_uint64 b 0 ctr ; b in
-    let ctrf = Nocrypto.Uncommon.Cs.(concat [ ctrv ; create_with 8 0 ]) in
-    let enc = Crypto.crypt ~key:sendaes ~ctr:ctrf (Cstruct.of_string data) in
-    let data = Builder.data ctx.version ctx.instances (Int32.pred keys.our_keyid) keys.their_keyid keys.dh.gx ctrv enc in
+    let our_ctr = Int64.succ keys.our_ctr in
+    let ctr =
+      let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
+      Cstruct.BE.set_uint64 buf 0 our_ctr ;
+      buf
+    in
+    Printf.printf "using key\n" ; Cstruct.hexdump sendaes ;
+    let enc = Crypto.crypt ~key:sendaes ~ctr (Cstruct.of_string data) in
+    let data = Builder.data ctx.version ctx.instances (Int32.pred keys.our_keyid) keys.their_keyid keys.dh.gx our_ctr enc in
     let mac = Crypto.sha1mac ~key:sendmac data in
     let out = wrap_b64string [ data ; mac ; Builder.encode_data (Cstruct.create 0)] in
     let out = match out with | Some x -> [x] | None -> [] in
-    (ctx, out, None)
+    let keys = { keys with our_ctr } in
+    let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
+    ({ ctx with state }, out, None)
   | MSGSTATE_FINISHED ->
      (ctx, [], Some "message couldn't be sent since OTR session is finished.")
 
