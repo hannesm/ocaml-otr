@@ -39,15 +39,13 @@ let header version instances typ =
    | _ -> assert false );
   buf
 
-let encode_data data =
-  let lenbuf = Cstruct.create 4 in
-  Cstruct.BE.set_uint32 lenbuf 0 (Int32.of_int (Cstruct.len data)) ;
-  lenbuf <+> data
-
 let encode_int data =
   let buf = Cstruct.create 4 in
   Cstruct.BE.set_uint32 buf 0 data ;
   buf
+
+let encode_data data =
+  encode_int (Int32.of_int (Cstruct.len data)) <+> data
 
 let dh_commit version instances dhshared hashed =
   let header = header version instances DH_COMMIT in
@@ -66,14 +64,15 @@ let signature version instances enc mac =
   header <+> encode_data enc <+> mac
 
 let data version instances keyida keyidb dh_y ctr data =
+  let open Cstruct in
   let header = header version instances DATA in
-  let keys = Cstruct.create 9 in
-  Cstruct.set_uint8 keys 0 0 ;
-  Cstruct.BE.set_uint32 keys 1 keyida ;
-  Cstruct.BE.set_uint32 keys 5 keyidb ;
+  let keys = create 9 in
+  set_uint8 keys 0 0 ;
+  BE.set_uint32 keys 1 keyida ;
+  BE.set_uint32 keys 5 keyidb ;
   let ctr =
-    let buf = Cstruct.create 8 in
-    Cstruct.BE.set_uint64 buf 0 ctr ;
+    let buf = create 8 in
+    BE.set_uint64 buf 0 ctr ;
     buf
   in
   header <+> keys <+> dh_y <+> ctr <+> encode_data data
