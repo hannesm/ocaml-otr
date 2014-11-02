@@ -62,12 +62,15 @@ let dh_gen_secret () =
   let secret, gx = Crypto.gen_dh_secret () in
   { secret ; gx ; gy = Cstruct.create 0 }
 
-let update_keys keys s_keyid r_keyid dh_y =
+let update_keys keys s_keyid r_keyid dh_y ctr =
+  let keys = { keys with their_ctr = ctr } in
   let keys =
     if keys.their_keyid = s_keyid then
       { keys with their_keyid = Int32.succ s_keyid ;
                   previous_y = keys.y ;
-                  y = dh_y }
+                  y = dh_y ;
+                  their_ctr = 0L
+      }
     else
       (assert (keys.their_keyid = Int32.succ s_keyid) ;
        keys)
@@ -75,7 +78,9 @@ let update_keys keys s_keyid r_keyid dh_y =
   if keys.our_keyid = r_keyid then
     { keys with our_keyid = Int32.succ r_keyid ;
                 previous_dh = keys.dh ;
-                dh = dh_gen_secret () }
+                dh = dh_gen_secret () ;
+                our_ctr = 0L ;
+    }
   else
     (assert (keys.our_keyid = Int32.succ r_keyid) ;
      keys)
@@ -83,6 +88,7 @@ let update_keys keys s_keyid r_keyid dh_y =
 let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
   | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
+    assert (ctr > keys.their_ctr) ;
     Printf.printf "reveal %d\n" (Cstruct.len reveal) ; Cstruct.hexdump reveal ;
     let {secret; gx}, gy = select_dh keys s_keyid r_keyid in
     let high = Crypto.mpi_g gx gy in
@@ -101,7 +107,7 @@ let handle_encrypted_data ctx keys bytes =
     let last = pred (Cstruct.len dec) in
     let txt = if Cstruct.get_uint8 dec last = 0 then Cstruct.to_string (Cstruct.sub dec 0 last) else Cstruct.to_string dec in
     (* retain some information: dh_y, ctr, data_keys *)
-    let keys = update_keys keys s_keyid r_keyid dh_y in
+    let keys = update_keys keys s_keyid r_keyid dh_y ctr in
     let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
     ({ ctx with state }, [], None, Some txt)
   | Parser.Error _ ->

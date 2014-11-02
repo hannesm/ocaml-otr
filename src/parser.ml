@@ -177,7 +177,7 @@ let parse_data_body buf =
   and r_keyid = BE.get_uint32 buf 5
   and dh_y, buf = ddata (shift buf 9)
   in
-  let ctr = sub buf 0 8
+  let ctr = BE.get_uint64 buf 0
   and encdata, buf = decode_data (shift buf 8)
   in
   let mac = sub buf 0 20

@@ -89,8 +89,8 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
       { secret ; gx ; gy = Cstruct.create 0 }
     and previous_y = Cstruct.create 0
     in
-    { dh ; previous_dh = { secret ; gx = gy ; gy = gx } ; our_keyid = 2l ;
-      y = gx ; previous_y ; their_keyid = keyida }
+    { dh ; previous_dh = { secret ; gx = gy ; gy = gx } ; our_keyid = 2l ; our_ctr = 0L ;
+      y = gx ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
   in
   let state = {
     auth_state = AUTHSTATE_NONE ;
@@ -124,8 +124,8 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } { secret ; gx ; gy } signature =
       { secret ; gx ; gy = Cstruct.create 0 }
     and previous_y = Cstruct.create 0
     in
-    { dh ; previous_dh = { secret ; gx ; gy } ; our_keyid = 2l ;
-      y = gy ; previous_y ; their_keyid = keyida }
+    { dh ; previous_dh = { secret ; gx ; gy } ; our_keyid = 2l ; our_ctr = 0L ;
+      y = gy ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
   in
   let state = {
     auth_state = AUTHSTATE_NONE ;
