@@ -39,22 +39,18 @@ let select_dh keys send recv ctr =
 
   let y =
     if keys.their_keyid = send then
-      ( Printf.printf "using current y\n" ;
-        keys.y )
+      keys.y
     else
       ( assert (keys.their_keyid = Int32.succ send) ;
         assert (Cstruct.len keys.previous_y > 0) ;
         assert (ctr > keys.their_ctr ) ;
-        Printf.printf "using previous y\n" ;
         keys.previous_y )
   in
   let dh =
     if keys.our_keyid = recv then
-      ( Printf.printf "using current dh\n" ;
-        keys.dh )
+      keys.dh
     else
       ( assert (keys.our_keyid = Int32.succ recv) ;
-        Printf.printf "using previous dh\n" ;
         keys.previous_dh )
   in
   (dh, y)
@@ -89,7 +85,6 @@ let update_keys keys s_keyid r_keyid dh_y ctr =
 let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
   | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
-    Printf.printf "reveal %d\n" (Cstruct.len reveal) ; Cstruct.hexdump reveal ;
     let {secret; gx}, gy = select_dh keys s_keyid r_keyid ctr in
     let high = Crypto.mpi_g gx gy in
     let shared = Crypto.dh_shared secret gy in
@@ -152,7 +147,6 @@ let send_otr ctx data =
       Cstruct.BE.set_uint64 buf 0 our_ctr ;
       buf
     in
-    Printf.printf "using key\n" ; Cstruct.hexdump sendaes ;
     let enc = Crypto.crypt ~key:sendaes ~ctr (Cstruct.of_string data) in
     let data = Builder.data ctx.version ctx.instances (Int32.pred keys.our_keyid) keys.their_keyid keys.dh.gx our_ctr enc in
     let mac = Crypto.sha1mac ~key:sendmac data in
