@@ -13,16 +13,16 @@ let dh_commit ctx their_versions =
     let h = Crypto.hash gx in
     let instances = instances version in
     let dh_commit = Builder.dh_commit version instances gxmpi h in
-    let dh_params = { secret ; gx ; gy = Cstruct.create 0 } in
+    let dh_params = { secret ; gx } in
     let auth_state = AUTHSTATE_AWAITING_DHKEY (dh_commit, h, dh_params, r)
     and message_state = MSGSTATE_PLAINTEXT in (* not entirely sure about this.. *)
     let state = { auth_state ; message_state } in
     ({ ctx with version ; instances ; state }, [dh_commit])
 
 let dh_key_await_revealsig ctx buf =
-  let secret, gy = Crypto.gen_dh_secret () in
-  let out = Builder.dh_key ctx.version ctx.instances gy in
-  let dh_params = { secret ; gy ; gx = Cstruct.create 0 } in
+  let secret, gx = Crypto.gen_dh_secret () in
+  let out = Builder.dh_key ctx.version ctx.instances gx in
+  let dh_params = { secret ; gx } in
   let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG (dh_params, buf) } in
   ({ ctx with state }, out)
 
@@ -44,11 +44,12 @@ let check_key_reveal_sig ctx { secret ; gx } r gy =
   in
   let mac = Crypto.mac160 ~key:m2 enc_sig in
   let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
-  let dh_params = { secret ; gx ; gy } in
-  let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, dh_params) } in
+  let dh_params = { secret ; gx } in
+  let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, dh_params, gy) } in
   ({ ctx with state }, reveal_sig)
 
-let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
+let check_reveal_send_sig ctx dh_params dh_commit buf =
+  let secret, gy = (dh_params.secret, dh_params.gx) in
   let r, enc_data, mac = Parser.parse_reveal buf in
   let gx =
     let gxenc, hgx = Parser.parse_dh_commit dh_commit in
@@ -86,10 +87,10 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
   let keys =
     let dh =
       let secret, gx = Crypto.gen_dh_secret () in
-      { secret ; gx ; gy = Cstruct.create 0 }
+      { secret ; gx }
     and previous_y = Cstruct.create 0
     in
-    { dh ; previous_dh = { secret ; gx = gy ; gy = gx } ; our_keyid = 2l ; our_ctr = 0L ;
+    { dh ; previous_dh = { secret ; gx = gy } ; our_keyid = 2l ; our_ctr = 0L ;
       y = gx ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
   in
   let state = {
@@ -99,7 +100,7 @@ let check_reveal_send_sig ctx { secret ; gy } dh_commit buf =
   ({ ctx with state ; their_dsa = Some pubb ; ssid },
    Builder.signature ctx.version ctx.instances enc m)
 
-let check_sig ctx { ssid ; c' ; m1' ; m2' } { secret ; gx ; gy } signature =
+let check_sig ctx { ssid ; c' ; m1' ; m2' } { secret ; gx } gy signature =
   (* decrypt signature, verify it and macs *)
   let enc_data =
     let enc_data, mac = Parser.decode_data signature in
@@ -121,10 +122,10 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } { secret ; gx ; gy } signature =
   let keys =
     let dh =
       let secret, gx = Crypto.gen_dh_secret () in
-      { secret ; gx ; gy = Cstruct.create 0 }
+      { secret ; gx }
     and previous_y = Cstruct.create 0
     in
-    { dh ; previous_dh = { secret ; gx ; gy } ; our_keyid = 2l ; our_ctr = 0L ;
+    { dh ; previous_dh = { secret ; gx } ; our_keyid = 2l ; our_ctr = 0L ;
       y = gy ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
   in
   let state = {
@@ -171,10 +172,10 @@ let handle_auth ctx bytes =
           else
             let ctx, dh_key = dh_key_await_revealsig ctx buf in
             (ctx, [dh_key], None)
-        | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ({ gy } as dh_params, _) ->
+        | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ({ gx } as dh_params, _) ->
           (* use this dh_commit ; resend dh_key *)
           let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG (dh_params, buf) } in
-          let out = Builder.dh_key ctx.version ctx.instances gy in
+          let out = Builder.dh_key ctx.version ctx.instances gx in
           ({ ctx with state }, [out], None)
         | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
           (* send dh_key, go to AWAITING_REVEALSIG *)
@@ -186,7 +187,7 @@ let handle_auth ctx bytes =
           let ctx, reveal = check_key_reveal_sig ctx dh_params r buf in
           (ctx, [reveal], None)
 
-        | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, { gy }) ->
+        | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
           (* same dh_key? -> retransmit REVEAL_SIG *)
           if Nocrypto.Uncommon.Cs.equal gy buf then
             (ctx, [reveal_sig], None)
@@ -198,9 +199,9 @@ let handle_auth ctx bytes =
           let ctx, out = check_reveal_send_sig ctx dh_params dh_commit buf in
           (ctx, [out], None)
 
-        | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params) ->
+        | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
           (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-          let ctx = check_sig ctx keys dh_params buf in
+          let ctx = check_sig ctx keys dh_params gy buf in
           (ctx, [], None)
 
         | DATA, _ ->

@@ -11,8 +11,7 @@ type keyblock = {
 
 type dh_params = {
   secret : Nocrypto.Dh.secret ;
-  gx     : Cstruct.t ;
-  gy     : Cstruct.t
+  gx     : Cstruct.t
 }
 
 type encryption_keys = {
@@ -35,7 +34,7 @@ type auth_state =
   | AUTHSTATE_NONE
   | AUTHSTATE_AWAITING_DHKEY of Cstruct.t * Cstruct.t * dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_REVEALSIG of dh_params * Cstruct.t
-  | AUTHSTATE_AWAITING_SIG of Cstruct.t * keyblock * dh_params
+  | AUTHSTATE_AWAITING_SIG of Cstruct.t * keyblock * dh_params * Cstruct.t
 
 type policy = [
   | `REQUIRE_ENCRYPTION

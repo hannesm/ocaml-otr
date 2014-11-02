@@ -57,7 +57,7 @@ let select_dh keys send recv ctr =
 
 let dh_gen_secret () =
   let secret, gx = Crypto.gen_dh_secret () in
-  { secret ; gx ; gy = Cstruct.create 0 }
+  { secret ; gx }
 
 let update_keys keys s_keyid r_keyid dh_y ctr =
   let keys = { keys with their_ctr = ctr } in
