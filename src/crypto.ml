@@ -26,8 +26,6 @@ module OtrDsa = struct
     in
     tag <+> encode_mpi p <+> encode_mpi q <+> encode_mpi gg <+> encode_mpi y
 
-  let pub = Dsa.pub
-
   let priv_to_wire k =
     to_wire (pub_of_priv k)
 

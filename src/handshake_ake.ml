@@ -70,7 +70,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
     let xb = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) enc_data in
     (* split into pubb, keyidb, sigb *)
     let (p,q,gg,y), keyidb, sigb = Parser.parse_signature_data xb in
-    let pubb = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
+    let pubb = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
     let gxmpi = Builder.encode_data gx
     and gympi = Builder.encode_data gy
     in
@@ -121,7 +121,7 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
     let dec = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) enc_data in
     (* split into puba keyida siga(Ma) *)
     let (p, q, gg, y), keyida, siga = Parser.parse_signature_data dec in
-    let puba = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
+    let puba = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
     let gxmpi = Builder.encode_data gx
     and gympi = Builder.encode_data gy
     in

@@ -79,6 +79,15 @@ let otr_mark, otr_err_mark, otr_query_mark, tag_prefix =
    re "?OTR",
    re " \t  \t\t\t\t \t \t \t  ")
 
+type ret = [
+  | `Data of Cstruct.t * string option
+  | `ParseError of string * string
+  | `Error of string * string option
+  | `PlainTag of State.version list * string option
+  | `Query of State.version list * string option
+  | `String of string
+]
+
 (* TODO: fragmentation (',' as final character) *)
 let classify_input bytes =
   match re_match otr_mark bytes with
