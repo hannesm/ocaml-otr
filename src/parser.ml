@@ -151,6 +151,7 @@ let parse_key buf =
 let parse_signature_data buf =
   let key, buf = parse_key buf in
   let keyida, buf = BE.get_uint32 buf 0, shift buf 4 in
+  assert (len buf = 40) ;
   let siga = split buf 20 in
   ( key, keyida, siga)
 
