@@ -6,10 +6,6 @@ open Nocrypto
 let encode_mpi n =
   Builder.encode_data (Numeric.Z.to_cstruct_be n)
 
-let encode_message data =
-  let d = Base64.encode data in
-  "OTR?:" ^ Cstruct.to_string d ^ "."
-
 let (<+>) = Uncommon.Cs.append
 
 let mpi_gt h1 h2 =
