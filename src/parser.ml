@@ -71,7 +71,6 @@ let re_match_exn re relen data =
 let re_match (re, relen) data =
   try Ok (re_match_exn re relen data) with _ -> Error (Unknown "parse failed")
 
-
 let otr_mark, otr_err_mark, otr_query_mark, tag_prefix =
   let re str = (Str.regexp_string str, String.length str) in
   (re "?OTR:",
@@ -88,20 +87,38 @@ type ret = [
   | `String of string
 ]
 
+let parse_data_exn data =
+  match string_split data (String.index data '.') with
+  | Some data, post ->
+    let b64data = Cstruct.of_string data in
+    (Nocrypto.Base64.decode b64data, post)
+  | None, _ -> raise_unknown "empty OTR message"
+
+let parse_data = catch parse_data_exn
+
+let parse_plain_tag_exn data =
+  let len = String.length data in
+  let rec find_mark idx acc =
+    if len - idx < 8 then
+      let _, post = string_split data idx in
+      (List.rev acc, post)
+    else
+      match String.sub data idx 8 with
+      | "  \t\t  \t " -> find_mark (idx + 8) (`V2 :: acc)
+      | "  \t\t  \t\t" -> find_mark (idx + 8) (`V3 :: acc)
+      | _ -> find_mark (idx + 8) acc
+  in
+  find_mark 0 []
+
+let parse_plain_tag = catch parse_plain_tag_exn
+
 (* TODO: fragmentation (',' as final character) *)
 let classify_input bytes =
   match re_match otr_mark bytes with
   | Ok (pre, data) ->
-    begin
-      try
-        match string_split data (String.index data '.') with
-        | Some data, post ->
-          let b64data = Cstruct.of_string data in
-          `Data (Nocrypto.Base64.decode b64data, maybe_concat pre post)
-        | None, _ -> `ParseError ("empty OTR message", bytes)
-      with Not_found -> `ParseError ("malformed OTR message", bytes)
-      (* TODO: fragmentation *)
-    end
+    ( match parse_data data with
+      | Ok (data, post) -> `Data (data, maybe_concat pre post)
+      | Error _ -> `ParseError ("Malformed OTR data message", bytes) )
   | Error _ -> match re_match otr_err_mark bytes with
     | Ok (pre, data) -> `Error (data, pre)
     | Error _ -> match re_match otr_query_mark bytes with
@@ -111,18 +128,9 @@ let classify_input bytes =
           | Error _ -> `ParseError ("Malformed OTR query", bytes) )
       | Error _ -> match re_match tag_prefix bytes with
         | Ok (pre, data) ->
-          let len = String.length data in
-          let rec find_mark idx acc =
-            if len - idx < 8 then
-              let _, post = string_split data idx in
-              `PlainTag (List.rev acc, maybe_concat pre post)
-            else
-              match String.sub data idx 8 with
-              | "  \t\t  \t " -> find_mark (idx + 8) (`V2 :: acc)
-              | "  \t\t  \t\t" -> find_mark (idx + 8) (`V3 :: acc)
-              | _ -> find_mark (idx + 8) acc
-          in
-          (try find_mark 0 [] with Not_found -> `ParseError ("Malformed tag", bytes) )
+          ( match parse_plain_tag data with
+            | Ok (versions, post) -> `PlainTag (versions, maybe_concat pre post)
+            | Error _ -> `ParseError ("Malformed tag", bytes) )
         | Error _ -> `String bytes
 
 (* real OTR data parsing *)
