@@ -139,8 +139,11 @@ let decode_data buf =
   let intsize = Int32.to_int size in
   (sub buf 4 intsize, shift buf (4 + intsize))
 
-(*let decode_data = catch decode_data_exn*)
 
+let parse_gy data =
+  let gy, rst = decode_data data in
+  guard (len rst = 0) Underflow >|= fun () ->
+  gy
 
 let parse_header bytes =
   ( match version_of_int (BE.get_uint16 bytes 0) with
