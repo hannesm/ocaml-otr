@@ -4,8 +4,6 @@ open Cstruct
 open State
 
 type error =
-  | TrailingBytes of string
-  | WrongLength   of string
   | Unknown       of string
   | Underflow
 
@@ -14,8 +12,6 @@ include Control.Or_error_make (struct type err = error end)
 exception Parser_error of error
 
 let raise_unknown msg        = raise (Parser_error (Unknown msg))
-and raise_wrong_length msg   = raise (Parser_error (WrongLength msg))
-and raise_trailing_bytes msg = raise (Parser_error (TrailingBytes msg))
 
 let catch f x =
   try return (f x) with

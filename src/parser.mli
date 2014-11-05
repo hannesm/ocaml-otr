@@ -1,6 +1,4 @@
 type error =
-  | TrailingBytes of string
-  | WrongLength   of string
   | Unknown       of string
   | Underflow
 
