@@ -5,8 +5,6 @@ let policy ctx p = List.mem p ctx.config.policies
 (* Monadic control-flow core. *)
 type error = string
 include Control.Or_error_make (struct type err = error end)
-exception Handshake_error of error
-let raise_unknown msg = raise (Handshake_error msg)
 
 let handle_cleartext ctx =
   let warn = match ctx.state.message_state with
@@ -26,14 +24,18 @@ let handle_whitespace_tag ctx their_versions =
   in
   let ctx, data_out =
     if policy ctx `WHITESPACE_START_AKE then
-      Ake.dh_commit ctx their_versions
+      match Ake.dh_commit ctx their_versions with
+      | Ake.Ok d -> d
+      | Ake.Error e -> Printf.printf "AKE error" ; (ctx, [])
     else
       (ctx, [])
   in
   (ctx, data_out, warn)
 
 let handle_query ctx their_versions =
-  Ake.dh_commit ctx their_versions
+  match Ake.dh_commit ctx their_versions with
+  | Ake.Ok d -> d
+  | Ake.Error _ -> (ctx, [])
 
 let handle_error ctx =
   if policy ctx `ERROR_START_AKE then
@@ -113,8 +115,9 @@ let handle_encrypted_data ctx keys bytes =
 let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
-    let ctx, out, enc = Ake.handle_auth ctx bytes in
-    (ctx, out, None, enc)
+    ( match Ake.handle_auth ctx bytes with
+      | Ake.Ok (ctx, out, enc) -> (ctx, out, None, enc)
+      | Ake.Error _ ->  (ctx, [], Some ("AKE error encountered"), None) )
   | MSGSTATE_ENCRYPTED keys -> handle_encrypted_data ctx keys bytes
   | _ -> (ctx, [], Some ("couldn't handle data"), None)
 
