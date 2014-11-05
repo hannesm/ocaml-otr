@@ -26,14 +26,14 @@ let handle_whitespace_tag ctx their_versions =
   in
   let ctx, data_out =
     if policy ctx `WHITESPACE_START_AKE then
-      Handshake_ake.dh_commit ctx their_versions
+      Ake.dh_commit ctx their_versions
     else
       (ctx, [])
   in
   (ctx, data_out, warn)
 
 let handle_query ctx their_versions =
-  Handshake_ake.dh_commit ctx their_versions
+  Ake.dh_commit ctx their_versions
 
 let handle_error ctx =
   if policy ctx `ERROR_START_AKE then
@@ -113,7 +113,7 @@ let handle_encrypted_data ctx keys bytes =
 let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
-    let ctx, out, enc = Handshake_ake.handle_auth ctx bytes in
+    let ctx, out, enc = Ake.handle_auth ctx bytes in
     (ctx, out, None, enc)
   | MSGSTATE_ENCRYPTED keys -> handle_encrypted_data ctx keys bytes
   | _ -> (ctx, [], Some ("couldn't handle data"), None)
