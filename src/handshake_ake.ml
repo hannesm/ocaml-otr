@@ -1,6 +1,12 @@
 
 open State
 
+(* Monadic control-flow core. *)
+type error = string
+include Control.Or_error_make (struct type err = error end)
+exception Handshake_error of error
+let raise_unknown msg = raise (Handshake_error msg)
+
 let instance_tag () =
   (* 32 bit random, >= 0x00000100 *)
   let tag = Cstruct.BE.get_uint32 (Nocrypto.Rng.generate 4) 0 in

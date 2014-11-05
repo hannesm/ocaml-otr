@@ -2,6 +2,12 @@ open State
 
 let policy ctx p = List.mem p ctx.config.policies
 
+(* Monadic control-flow core. *)
+type error = string
+include Control.Or_error_make (struct type err = error end)
+exception Handshake_error of error
+let raise_unknown msg = raise (Handshake_error msg)
+
 let handle_cleartext ctx =
   let warn = match ctx.state.message_state with
     | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
