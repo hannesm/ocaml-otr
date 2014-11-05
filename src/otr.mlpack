@@ -1,12 +1,11 @@
 # OASIS_START
-# DO NOT EDIT (digest: fee5d9336b746fca3f3f24d8bf155d3d)
+# DO NOT EDIT (digest: 92d518362b84e6d5fb3d7c838351ef55)
 Packet
 Control
 Crypto
 State
 Builder
 Parser
-Handshake_utils
 Handshake_ake
 Handshake
 # OASIS_STOP
