@@ -1,6 +1,6 @@
 open State
 
-open Handshake_utils
+let policy ctx p = List.mem p ctx.config.policies
 
 let handle_cleartext ctx =
   let warn = match ctx.state.message_state with
