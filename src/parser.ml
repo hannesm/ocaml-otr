@@ -147,35 +147,37 @@ let parse_gy data =
   gy
 
 let parse_header bytes =
-  ( match version_of_int (BE.get_uint16 bytes 0) with
-    | None -> raise_unknown "version"
+  catch (BE.get_uint16 bytes) 0 >>= fun ver ->
+  ( match version_of_int ver with
+    | None -> fail (Unknown "version")
     | Some v -> return v ) >>= fun version ->
-  ( match int_to_message_type (get_uint8 bytes 2) with
+  catch (get_uint8 bytes) 2 >>= fun typ ->
+  ( match int_to_message_type typ with
     | Some x -> return x
-    | None -> raise_unknown "message type" ) >|= fun typ ->
-  let instances, buf =
-    match version with
-    | `V2 -> (None, shift bytes 3)
+    | None -> fail (Unknown "message type") ) >>= fun typ ->
+  ( match version with
+    | `V2 -> return (None, shift bytes 3)
     | `V3 ->
-      let instances = Some BE.(get_uint32 bytes 3, get_uint32 bytes 7) in
-      (instances, shift bytes 11)
-  in (version, typ, instances, buf)
+      catch (BE.get_uint32 bytes) 3 >>= fun mine ->
+      catch (BE.get_uint32 bytes) 7 >|= fun their ->
+      (Some (mine, their), shift bytes 11) ) >|= fun (instances, buf) ->
+  (version, typ, instances, buf)
 
 type key = Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t
 
 let parse_signature_data buf =
-   let tag, buf = split buf 2 in
-   guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") >>= fun () ->
-   decode_data buf >>= fun (p, buf) ->
-   decode_data buf >>= fun (q, buf) ->
-   decode_data buf >>= fun (gg, buf) ->
-   decode_data buf >>= fun (y, buf) ->
-   let key = (p, q, gg, y) in
-   let keyida = BE.get_uint32 buf 0 in
-   let buf = shift buf 4 in
-   guard (len buf = 40) (Unknown "signature length") >|= fun () ->
-   let siga = split buf 20 in
-   (key, keyida, siga)
+  catch (split buf) 2 >>= fun (tag, buf) ->
+  guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") >>= fun () ->
+  decode_data buf >>= fun (p, buf) ->
+  decode_data buf >>= fun (q, buf) ->
+  decode_data buf >>= fun (gg, buf) ->
+  decode_data buf >>= fun (y, buf) ->
+  let key = (p, q, gg, y) in
+  catch (BE.get_uint32 buf) 0 >>= fun keyida ->
+  let buf = shift buf 4 in
+  guard (len buf = 40) (Unknown "signature length") >|= fun () ->
+  let siga = split buf 20 in
+  (key, keyida, siga)
 
 let parse_reveal buf =
   decode_data buf >>= fun (r, buf) ->
@@ -190,14 +192,13 @@ let parse_dh_commit buf =
   (gxenc, hgx)
 
 let parse_data_body buf =
-  let flags = get_uint8 buf 0
-  and s_keyid = BE.get_uint32 buf 1
-  and r_keyid = BE.get_uint32 buf 5
-  in
+  catch (get_uint8 buf) 0 >>= fun flags ->
+  catch (BE.get_uint32 buf) 1 >>= fun s_keyid ->
+  catch (BE.get_uint32 buf) 5 >>= fun r_keyid ->
   decode_data (shift buf 9) >>= fun (dh_y, buf) ->
-  let ctr = BE.get_uint64 buf 0 in
+  catch (BE.get_uint64 buf) 0 >>= fun ctr ->
   decode_data (shift buf 8) >>= fun (encdata, buf) ->
-  let mac = sub buf 0 20 in
+  catch (sub buf 0) 20 >>= fun mac ->
   decode_data (shift buf 20) >>= fun (reveal, buf) ->
   guard (len buf = 0) Underflow >|= fun () ->
   (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
