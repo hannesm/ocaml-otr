@@ -53,83 +53,93 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
     ({ ctx with state }, reveal_sig)
 
 let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
-  let r, enc_data, mac = Parser.parse_reveal buf in
-  let gx =
-    let gxenc, hgx = Parser.parse_dh_commit dh_commit in
-    let gx = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxenc in
-    let hgx' = Crypto.hash gx in
-    assert (Nocrypto.Uncommon.Cs.equal hgx hgx') ;
-    Parser.(match parse_gy gx with
-        | Error _ -> assert false
-        | Ok gx -> gx )
-  in
-  let shared_secret = Crypto.dh_shared dh_secret gx in
-  let { ssid ; c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
-  let mac' = Crypto.mac160 ~key:m2 enc_data in
-  assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
-  let pubb, keyidb =
-    let xb = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) enc_data in
-    (* split into pubb, keyidb, sigb *)
-    let (p,q,gg,y), keyidb, sigb = Parser.parse_signature_data xb in
-    let pubb = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
-    let gxmpi = Builder.encode_data gx
-    and gympi = Builder.encode_data gy
+  match Parser.parse_reveal buf with
+  | Parser.Error _ -> assert false
+  | Parser.Ok (r, enc_data, mac) ->
+    let gx =
+      match Parser.parse_dh_commit dh_commit with
+      | Parser.Error _ -> assert false
+      | Parser.Ok (gxenc, hgx) ->
+        let gx = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxenc in
+        let hgx' = Crypto.hash gx in
+        assert (Nocrypto.Uncommon.Cs.equal hgx hgx') ;
+        Parser.(match parse_gy gx with
+            | Error _ -> assert false
+            | Ok gx -> gx )
     in
-    let mb = Crypto.mac ~key:m1 [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pubb ; Builder.encode_int keyidb ] in
-    assert (Crypto.OtrDsa.verify ~key:pubb sigb mb) ;
-    Printf.printf "PUBB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pubb) ;
-    (pubb, keyidb)
-  in
-  (* pick keyida *)
-  let keyida = 1l in
-  let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
-  let siga =
-    let gxmpi = Builder.encode_data gx
-    and gympi = Builder.encode_data gy
+    let shared_secret = Crypto.dh_shared dh_secret gx in
+    let { ssid ; c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
+    let mac' = Crypto.mac160 ~key:m2 enc_data in
+    assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
+    let pubb, keyidb =
+      let xb = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) enc_data in
+      (* split into pubb, keyidb, sigb *)
+      match Parser.parse_signature_data xb with
+      | Parser.Error _ -> assert false
+      | Parser.Ok ((p,q,gg,y), keyidb, sigb) ->
+        let pubb = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
+        let gxmpi = Builder.encode_data gx
+        and gympi = Builder.encode_data gy
+        in
+        let mb = Crypto.mac ~key:m1 [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pubb ; Builder.encode_int keyidb ] in
+        assert (Crypto.OtrDsa.verify ~key:pubb sigb mb) ;
+        Printf.printf "PUBB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pubb) ;
+        (pubb, keyidb)
     in
-    let ma = Crypto.mac ~key:m1' [ gympi ; gxmpi ; puba ; Builder.encode_int keyida ] in
-    Crypto.OtrDsa.signature ~key:ctx.config.dsa ma
-  in
-  let enc =
-    let xa = puba <+> Builder.encode_int keyida <+> siga in
-    Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa
-  in
-  let m = Crypto.mac160 ~key:m2' enc in
-  let keys =
-    let dh = Crypto.gen_dh_secret ()
-    and previous_y = Cstruct.create 0
+    (* pick keyida *)
+    let keyida = 1l in
+    let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
+    let siga =
+      let gxmpi = Builder.encode_data gx
+      and gympi = Builder.encode_data gy
+      in
+      let ma = Crypto.mac ~key:m1' [ gympi ; gxmpi ; puba ; Builder.encode_int keyida ] in
+      Crypto.OtrDsa.signature ~key:ctx.config.dsa ma
     in
-    { dh ; previous_dh = (dh_secret, gy) ; our_keyid = 2l ; our_ctr = 0L ;
-      y = gx ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
-  in
-  let state = {
-    auth_state = AUTHSTATE_NONE ;
+    let enc =
+      let xa = puba <+> Builder.encode_int keyida <+> siga in
+      Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa
+    in
+    let m = Crypto.mac160 ~key:m2' enc in
+    let keys =
+      let dh = Crypto.gen_dh_secret ()
+      and previous_y = Cstruct.create 0
+      in
+      { dh ; previous_dh = (dh_secret, gy) ; our_keyid = 2l ; our_ctr = 0L ;
+        y = gx ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
+    in
+    let state = {
+      auth_state = AUTHSTATE_NONE ;
     message_state = MSGSTATE_ENCRYPTED keys
-  } in
-  ({ ctx with state ; their_dsa = Some pubb ; ssid },
-   Builder.signature ctx.version ctx.instances enc m)
+    } in
+    ({ ctx with state ; their_dsa = Some pubb ; ssid },
+     Builder.signature ctx.version ctx.instances enc m)
 
 let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
   let enc_data =
-    let enc_data, mac = Parser.decode_data signature in
-    assert (Cstruct.len mac = 20) ;
-    let mymac = Crypto.mac160 ~key:m2' enc_data in
-    assert (Nocrypto.Uncommon.Cs.equal mac mymac) ;
-    enc_data
+    match Parser.decode_data signature with
+    | Parser.Error _ -> assert false
+    | Parser.Ok (enc_data, mac) ->
+      assert (Cstruct.len mac = 20) ;
+      let mymac = Crypto.mac160 ~key:m2' enc_data in
+      assert (Nocrypto.Uncommon.Cs.equal mac mymac) ;
+      enc_data
   in
   let puba, keyida =
     let dec = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) enc_data in
     (* split into puba keyida siga(Ma) *)
-    let (p, q, gg, y), keyida, siga = Parser.parse_signature_data dec in
-    let puba = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
-    let gxmpi = Builder.encode_data gx
-    and gympi = Builder.encode_data gy
-    in
-    let ma = Crypto.mac ~key:m1' [ gympi ; gxmpi ; Crypto.OtrDsa.to_wire puba ; Builder.encode_int keyida ] in
-    assert (Crypto.OtrDsa.verify ~key:puba siga ma) ;
-    Printf.printf "PUBA their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint puba) ;
-    (puba, keyida)
+    match Parser.parse_signature_data dec with
+    | Parser.Error _ -> assert false
+    | Parser.Ok ((p, q, gg, y), keyida, siga) ->
+      let puba = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
+      let gxmpi = Builder.encode_data gx
+      and gympi = Builder.encode_data gy
+      in
+      let ma = Crypto.mac ~key:m1' [ gympi ; gxmpi ; Crypto.OtrDsa.to_wire puba ; Builder.encode_int keyida ] in
+      assert (Crypto.OtrDsa.verify ~key:puba siga ma) ;
+      Printf.printf "PUBA their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint puba) ;
+      (puba, keyida)
   in
   let keys =
     let dh = Crypto.gen_dh_secret ()

@@ -134,14 +134,15 @@ let classify_input bytes =
         | Error _ -> `String bytes
 
 (* real OTR data parsing *)
-let decode_data buf =
+let decode_data_exn buf =
   let size = BE.get_uint32 buf 0 in
   let intsize = Int32.to_int size in
   (sub buf 4 intsize, shift buf (4 + intsize))
 
+let decode_data = catch decode_data_exn
 
 let parse_gy data =
-  let gy, rst = decode_data data in
+  decode_data data >>= fun (gy, rst) ->
   guard (len rst = 0) Underflow >|= fun () ->
   gy
 
@@ -151,58 +152,55 @@ let parse_header bytes =
     | Some v -> return v ) >>= fun version ->
   ( match int_to_message_type (get_uint8 bytes 2) with
     | Some x -> return x
-    | None -> raise_unknown "message type" ) >>= fun typ ->
-  ( match version with
-    | `V2 -> return (None, shift bytes 3)
+    | None -> raise_unknown "message type" ) >|= fun typ ->
+  let instances, buf =
+    match version with
+    | `V2 -> (None, shift bytes 3)
     | `V3 ->
       let instances = Some BE.(get_uint32 bytes 3, get_uint32 bytes 7) in
-      return (instances, shift bytes 11) ) >|= fun (instances, buf) ->
-  (version, typ, instances, buf)
+      (instances, shift bytes 11)
+  in (version, typ, instances, buf)
 
-let parse_key buf =
-  let tag, buf = split buf 2 in
-  assert (BE.get_uint16 tag 0 = 0) ;
-  let p, buf = decode_data buf in
-  let q, buf = decode_data buf in
-  let gg, buf = decode_data buf in
-  let y, buf = decode_data buf in
-  ((p, q, gg, y), buf)
+type key = Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t
 
 let parse_signature_data buf =
-  let key, buf = parse_key buf in
-  let keyida, buf = BE.get_uint32 buf 0, shift buf 4 in
-  assert (len buf = 40) ;
-  let siga = split buf 20 in
-  ( key, keyida, siga)
+   let tag, buf = split buf 2 in
+   guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") >>= fun () ->
+   decode_data buf >>= fun (p, buf) ->
+   decode_data buf >>= fun (q, buf) ->
+   decode_data buf >>= fun (gg, buf) ->
+   decode_data buf >>= fun (y, buf) ->
+   let key = (p, q, gg, y) in
+   let keyida = BE.get_uint32 buf 0 in
+   let buf = shift buf 4 in
+   guard (len buf = 40) (Unknown "signature length") >|= fun () ->
+   let siga = split buf 20 in
+   (key, keyida, siga)
 
 let parse_reveal buf =
-  let r, buf = decode_data buf in
-  let enc_data, mac = decode_data buf in
-  assert (len mac = 20) ;
+  decode_data buf >>= fun (r, buf) ->
+  decode_data buf >>= fun (enc_data, mac) ->
+  guard (len mac = 20) (Unknown "wrong mac length") >|= fun () ->
   (r, enc_data, mac)
 
 let parse_dh_commit buf =
-  let gxenc, buf = decode_data buf in
-  let hgx, buf = decode_data buf in
-  assert (len buf = 0) ;
-  assert (len hgx = 32) ;
+  decode_data buf >>= fun (gxenc, buf) ->
+  decode_data buf >>= fun (hgx, buf) ->
+  guard ((len buf = 0) && (len hgx = 32)) (Unknown "bad dh_commit") >|= fun () ->
   (gxenc, hgx)
 
 let parse_data_body buf =
   let flags = get_uint8 buf 0
   and s_keyid = BE.get_uint32 buf 1
   and r_keyid = BE.get_uint32 buf 5
-  and dh_y, buf = decode_data (shift buf 9)
   in
-  let ctr = BE.get_uint64 buf 0
-  and encdata, buf = decode_data (shift buf 8)
-  in
-  let mac = sub buf 0 20
-  and reveal, buf = decode_data (shift buf 20)
-  in
-  assert (len buf = 0) ;
+  decode_data (shift buf 9) >>= fun (dh_y, buf) ->
+  let ctr = BE.get_uint64 buf 0 in
+  decode_data (shift buf 8) >>= fun (encdata, buf) ->
+  let mac = sub buf 0 20 in
+  decode_data (shift buf 20) >>= fun (reveal, buf) ->
+  guard (len buf = 0) Underflow >|= fun () ->
   (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
-
 
 let parse_check_data version instances buf =
   parse_header buf >>= fun (version', typ, instances', buf) ->
@@ -213,5 +211,5 @@ let parse_check_data version instances buf =
       guard (myb = yourb) (Unknown "instance")
     | `V2, _, _ -> return ()
     | _ -> fail (Unknown "instances")) >>= fun () ->
-  guard (typ = DATA) (Unknown "type") >|= fun () ->
+  guard (typ = DATA) (Unknown "type") >>= fun () ->
   parse_data_body buf
