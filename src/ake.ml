@@ -85,6 +85,13 @@ let mac_verify hmac signature pub gx gy keyid =
   guard (Crypto.OtrDsa.verify ~key:pub signature mb) "DSA verification failed" >|= fun () ->
   Printf.printf "PUB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pub)
 
+let keyblock previous_dh y their_keyid =
+  let dh = Crypto.gen_dh_secret ()
+  and previous_y = Cstruct.create 0
+  in
+  { dh ; previous_dh ; our_keyid = 2l ; our_ctr = 0L ;
+    y  ; previous_y  ; their_keyid    ; their_ctr = 0L }
+
 let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   safe_parse Parser.parse_reveal buf >>= fun (r, enc_data, mac) ->
   safe_parse Parser.parse_dh_commit dh_commit >>= fun (gxenc, hgx) ->
@@ -107,13 +114,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   let keyida = 1l in
   let enc_sig = mac_sign_encrypt m1' c' ctx.config.dsa gy gx keyida in
   let m = Crypto.mac160 ~key:m2' enc_sig in
-  let keys =
-    let dh = Crypto.gen_dh_secret ()
-    and previous_y = Cstruct.create 0
-    in
-    { dh ; previous_dh = (dh_secret, gy) ; our_keyid = 2l ; our_ctr = 0L ;
-      y = gx ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
-  in
+  let keys = keyblock (dh_secret, gy) gx keyida in
   let state = {
     auth_state = AUTHSTATE_NONE ;
     message_state = MSGSTATE_ENCRYPTED keys
@@ -132,13 +133,7 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
   safe_parse Parser.parse_signature_data dec >>= fun ((p,q,gg,y), keyida, siga) ->
   let puba = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
   mac_verify m1' siga puba gy gx keyida >>= fun () ->
-  let keys =
-    let dh = Crypto.gen_dh_secret ()
-    and previous_y = Cstruct.create 0
-    in
-    { dh ; previous_dh = (dh_secret, gx) ; our_keyid = 2l ; our_ctr = 0L ;
-      y = gy ; previous_y ; their_keyid = keyida ; their_ctr = 0L }
-  in
+  let keys = keyblock (dh_secret, gx) gy keyida in
   let state = {
     auth_state = AUTHSTATE_NONE ;
     message_state = MSGSTATE_ENCRYPTED keys
