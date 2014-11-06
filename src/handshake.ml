@@ -44,15 +44,14 @@ let handle_error ctx =
     None
 
 let select_dh keys send recv ctr =
-
   let y =
     if keys.their_keyid = send then
-      keys.y
+      keys.gy
     else
       ( assert (keys.their_keyid = Int32.succ send) ;
-        assert (Cstruct.len keys.previous_y > 0) ;
+        assert (Cstruct.len keys.previous_gy > 0) ;
         assert (ctr > keys.their_ctr ) ;
-        keys.previous_y )
+        keys.previous_gy )
   in
   let dh =
     if keys.our_keyid = recv then
@@ -68,8 +67,8 @@ let update_keys keys s_keyid r_keyid dh_y ctr =
   let keys =
     if keys.their_keyid = s_keyid then
       { keys with their_keyid = Int32.succ s_keyid ;
-                  previous_y = keys.y ;
-                  y = dh_y ;
+                  previous_gy = keys.gy ;
+                  gy = dh_y ;
                   their_ctr = 0L ;
       }
     else
@@ -145,7 +144,7 @@ let send_otr ctx data =
     (ctx, [Builder.tag ctx.config.versions ^ data], None)
   | MSGSTATE_PLAINTEXT -> (ctx, [data], None)
   | MSGSTATE_ENCRYPTED keys ->
-    let (dh_secret, gx), gy = (keys.previous_dh, keys.y) in
+    let (dh_secret, gx), gy = (keys.previous_dh, keys.gy) in
     let high = Crypto.mpi_gt gx gy in
     let shared = match Crypto.dh_shared dh_secret gy with
       | Some x -> x

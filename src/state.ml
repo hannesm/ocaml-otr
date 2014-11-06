@@ -16,8 +16,8 @@ type encryption_keys = {
   previous_dh : dh_params ;
   our_keyid : int32 ;
   our_ctr : int64 ;
-  y : Cstruct.t ;
-  previous_y : Cstruct.t ;
+  gy : Cstruct.t ;
+  previous_gy : Cstruct.t ;
   their_keyid : int32 ;
   their_ctr : int64 ;
 }
