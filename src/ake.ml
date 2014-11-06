@@ -76,6 +76,14 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
   let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, (dh_secret, gx), gy) } in
   ({ ctx with state }, reveal_sig)
 
+let mac_verify hmac signature pub gx gy keyid =
+  let gxmpi = Builder.encode_data gx
+  and gympi = Builder.encode_data gy
+  in
+  let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pub ; Builder.encode_int keyid ] in
+  guard (Crypto.OtrDsa.verify ~key:pub signature mb) "DSA verification failed" >|= fun () ->
+  Printf.printf "PUB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pub)
+
 let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   safe_parse Parser.parse_reveal buf >>= fun (r, enc_data, mac) ->
   safe_parse Parser.parse_dh_commit dh_commit >>= fun (gxenc, hgx) ->
@@ -93,12 +101,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   (* split into pubb, keyidb, sigb *)
   safe_parse Parser.parse_signature_data xb >>= fun ((p, q, gg, y), keyidb, sigb) ->
   let pubb = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
-  let gxmpi = Builder.encode_data gx
-  and gympi = Builder.encode_data gy
-  in
-  let mb = Crypto.mac ~key:m1 [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pubb ; Builder.encode_int keyidb ] in
-  guard (Crypto.OtrDsa.verify ~key:pubb sigb mb) "DSA verification failed" >>= fun () ->
-  Printf.printf "PUBB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pubb) ;
+  mac_verify m1 sigb pubb gx gy keyidb >>= fun () ->
   (* pick keyida *)
   let keyida = 1l in
   let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
@@ -138,12 +141,7 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
   (* split into puba keyida siga(Ma) *)
   safe_parse Parser.parse_signature_data dec >>= fun ((p,q,gg,y), keyida, siga) ->
   let puba = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
-  let gxmpi = Builder.encode_data gx
-  and gympi = Builder.encode_data gy
-  in
-  let ma = Crypto.mac ~key:m1' [ gympi ; gxmpi ; Crypto.OtrDsa.to_wire puba ; Builder.encode_int keyida ] in
-  guard (Crypto.OtrDsa.verify ~key:puba siga ma) "DSA verification failed" >>= fun () ->
-  Printf.printf "PUBA their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint puba) ;
+  mac_verify m1' siga puba gy gx keyida >>= fun () ->
   let keys =
     let dh = Crypto.gen_dh_secret ()
     and previous_y = Cstruct.create 0
