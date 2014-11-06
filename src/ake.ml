@@ -208,11 +208,11 @@ let handle_auth ctx bytes =
 
     | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
       (* same dh_key? -> retransmit REVEAL_SIG *)
-      (* XXX: buf is encoded!, gy decoded!! *)
-      if Nocrypto.Uncommon.Cs.equal gy buf then
-        return (ctx, [reveal_sig], None)
+      safe_parse Parser.parse_gy buf >|= fun gy' ->
+      if Nocrypto.Uncommon.Cs.equal gy gy' then
+        (ctx, [reveal_sig], None)
       else
-        return (ctx, [], None)
+        (ctx, [], None)
 
     | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
       (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
