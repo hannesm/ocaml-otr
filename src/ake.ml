@@ -25,6 +25,28 @@ let safe_parse f x =
   | Parser.Ok x -> return x
   | Parser.Error _ -> fail "error while parsing"
 
+
+let mac_sign_encrypt hmac ckey priv gx gy keyid =
+  let (<+>) = Nocrypto.Uncommon.Cs.append in
+  let pub = Crypto.OtrDsa.priv_to_wire priv in
+  let sigb =
+    let gxmpi = Builder.encode_data gx
+    and gympi = Builder.encode_data gy
+    in
+    let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; pub ; Builder.encode_int keyid ] in
+    Crypto.OtrDsa.signature ~key:priv mb
+  in
+  let xb = pub <+> Builder.encode_int keyid <+> sigb in
+  Crypto.crypt ~key:ckey ~ctr:(Crypto.ctr0 ()) xb
+
+let mac_verify hmac signature pub gx gy keyid =
+  let gxmpi = Builder.encode_data gx
+  and gympi = Builder.encode_data gy
+  in
+  let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pub ; Builder.encode_int keyid ] in
+  guard (Crypto.OtrDsa.verify ~key:pub signature mb) "DSA verification failed" >|= fun () ->
+  Printf.printf "PUB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pub)
+
 (* authentication handshake *)
 let dh_commit ctx their_versions =
   match select_version ctx.config.versions their_versions with
@@ -49,20 +71,6 @@ let dh_key_await_revealsig ctx buf =
   let state = { ctx.state with auth_state } in
   ({ ctx with state }, out)
 
-let (<+>) = Nocrypto.Uncommon.Cs.append
-
-let mac_sign_encrypt hmac ckey priv gx gy keyid =
-  let pub = Crypto.OtrDsa.priv_to_wire priv in
-  let sigb =
-    let gxmpi = Builder.encode_data gx
-    and gympi = Builder.encode_data gy
-    in
-    let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; pub ; Builder.encode_int keyid ] in
-    Crypto.OtrDsa.signature ~key:priv mb
-  in
-  let xb = pub <+> Builder.encode_int keyid <+> sigb in
-  Crypto.crypt ~key:ckey ~ctr:(Crypto.ctr0 ()) xb
-
 let check_key_reveal_sig ctx (dh_secret, gx) r gy =
   safe_parse Parser.parse_gy gy >>= fun gy ->
   ( match Crypto.dh_shared dh_secret gy with
@@ -76,14 +84,6 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
   let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
   let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, (dh_secret, gx), gy) } in
   ({ ctx with state }, reveal_sig)
-
-let mac_verify hmac signature pub gx gy keyid =
-  let gxmpi = Builder.encode_data gx
-  and gympi = Builder.encode_data gy
-  in
-  let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pub ; Builder.encode_int keyid ] in
-  guard (Crypto.OtrDsa.verify ~key:pub signature mb) "DSA verification failed" >|= fun () ->
-  Printf.printf "PUB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pub)
 
 let keys previous_dh gy their_keyid =
   let dh = Crypto.gen_dh_secret ()
