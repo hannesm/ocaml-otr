@@ -26,7 +26,7 @@ let handle_whitespace_tag ctx their_versions =
     if policy ctx `WHITESPACE_START_AKE then
       match Ake.dh_commit ctx their_versions with
       | Ake.Ok d -> d
-      | Ake.Error e -> Printf.printf "AKE error" ; (ctx, [])
+      | Ake.Error e -> Printf.printf "AKE error: %s\n" e ; (ctx, [])
     else
       (ctx, [])
   in
@@ -35,7 +35,7 @@ let handle_whitespace_tag ctx their_versions =
 let handle_query ctx their_versions =
   match Ake.dh_commit ctx their_versions with
   | Ake.Ok d -> d
-  | Ake.Error _ -> (ctx, [])
+  | Ake.Error e -> Printf.printf "AKE error : %s\n" e ; (ctx, [])
 
 let handle_error ctx =
   if policy ctx `ERROR_START_AKE then
@@ -44,58 +44,54 @@ let handle_error ctx =
     None
 
 let select_dh keys send recv ctr =
-  let y =
-    if keys.their_keyid = send then
-      keys.gy
+  ( if keys.their_keyid = send then
+      return keys.gy
     else
-      ( assert (keys.their_keyid = Int32.succ send) ;
-        assert (Cstruct.len keys.previous_gy > 0) ;
-        assert (ctr > keys.their_ctr ) ;
-        keys.previous_gy )
-  in
-  let dh =
-    if keys.our_keyid = recv then
-      keys.dh
+      ( guard (keys.their_keyid = Int32.succ send) "wrong keyid" >>= fun () ->
+        guard (Cstruct.len keys.previous_gy > 0) "no previous gy" >>= fun () ->
+        guard (ctr > keys.their_ctr ) "invalid counter" >|= fun () ->
+        keys.previous_gy ) ) >>= fun gy ->
+  ( if keys.our_keyid = recv then
+      return keys.dh
     else
-      ( assert (keys.our_keyid = Int32.succ recv) ;
-        keys.previous_dh )
-  in
-  (dh, y)
+      ( guard (keys.our_keyid = Int32.succ recv) "wrong keyid" >|= fun () ->
+        keys.previous_dh ) ) >|= fun dh ->
+  (dh, gy)
 
 let update_keys keys s_keyid r_keyid dh_y ctr =
   let keys = { keys with their_ctr = ctr } in
-  let keys =
-    if keys.their_keyid = s_keyid then
-      { keys with their_keyid = Int32.succ s_keyid ;
+  ( if keys.their_keyid = s_keyid then
+      return {
+        keys with their_keyid = Int32.succ s_keyid ;
                   previous_gy = keys.gy ;
                   gy = dh_y ;
                   their_ctr = 0L ;
       }
     else
-      (assert (keys.their_keyid = Int32.succ s_keyid) ;
-       keys)
-  in
+      (guard (keys.their_keyid = Int32.succ s_keyid) "wrong keyid" >|= fun () ->
+       keys) ) >>= fun keys ->
   if keys.our_keyid = r_keyid then
-    { keys with our_keyid = Int32.succ r_keyid ;
+    return {
+      keys with our_keyid = Int32.succ r_keyid ;
                 previous_dh = keys.dh ;
                 dh = Crypto.gen_dh_secret () ;
                 our_ctr = 0L ;
     }
   else
-    (assert (keys.our_keyid = Int32.succ r_keyid) ;
+    (guard (keys.our_keyid = Int32.succ r_keyid) "wrong keyid" >|= fun () ->
      keys)
 
 let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
   | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
-    let (dh_secret, gx), gy = select_dh keys s_keyid r_keyid ctr in
+    select_dh keys s_keyid r_keyid ctr >>= fun ((dh_secret, gx), gy) ->
     let high = Crypto.mpi_gt gx gy in
-    let shared = match Crypto.dh_shared dh_secret gy with
-      | Some x -> x
-      | None -> assert false
-    in
+    ( match Crypto.dh_shared dh_secret gy with
+      | Some x -> return x
+      | None -> fail "invalid DH public key" ) >>= fun shared ->
     let _, _, recvaes, recvmac = Crypto.data_keys shared high in
     let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
+    guard (stop >= 0) "invalid data" >>= fun () ->
     let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
     let ctrcs =
       let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
@@ -103,25 +99,29 @@ let handle_encrypted_data ctx keys bytes =
       buf
     in
     let dec = Crypto.crypt ~key:recvaes ~ctr:ctrcs encdata in
-    assert (Nocrypto.Uncommon.Cs.equal mac mac') ;
+    guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >>= fun () ->
     (* might contain trailing 0 *)
     let last = pred (Cstruct.len dec) in
-    let txt = if Cstruct.get_uint8 dec last = 0 then Cstruct.to_string (Cstruct.sub dec 0 last) else Cstruct.to_string dec in
+    let txt = if Cstruct.get_uint8 dec last = 0 then
+        Cstruct.to_string (Cstruct.sub dec 0 last)
+      else
+        Cstruct.to_string dec
+    in
     (* retain some information: dh_y, ctr, data_keys *)
-    let keys = update_keys keys s_keyid r_keyid dh_y ctr in
+    update_keys keys s_keyid r_keyid dh_y ctr >|= fun keys ->
     let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
     ({ ctx with state }, [], None, Some txt)
-  | Parser.Error _ ->
-    (ctx, [], Some "malformed data message received", None)
+  | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
+  | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
 let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
-      | Ake.Ok (ctx, out, enc) -> (ctx, out, None, enc)
-      | Ake.Error _ ->  (ctx, [], Some ("AKE error encountered"), None) )
+      | Ake.Ok (ctx, out, enc) -> return (ctx, out, None, enc)
+      | Ake.Error x ->  fail ("AKE error encountered" ^ x) )
   | MSGSTATE_ENCRYPTED keys -> handle_encrypted_data ctx keys bytes
-  | _ -> (ctx, [], Some ("couldn't handle data"), None)
+  | _ -> fail ("couldn't handle data")
 
 let wrap_b64string = function
   | [] -> None
@@ -132,6 +132,29 @@ let wrap_b64string = function
 (* operations triggered by a user *)
 let start_otr ctx =
   (ctx, Builder.query_message ctx.config.versions)
+
+let encrypt version instances keys data =
+  let (dh_secret, gx), gy = (keys.previous_dh, keys.gy) in
+  let high = Crypto.mpi_gt gx gy in
+  ( match Crypto.dh_shared dh_secret gy with
+    | Some x -> return x
+    | None -> fail "invalid DH public key" ) >|= fun shared ->
+  let sendaes, sendmac, _, _ = Crypto.data_keys shared high in
+  let our_ctr = Int64.succ keys.our_ctr in
+  let ctr =
+    let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
+    Cstruct.BE.set_uint64 buf 0 our_ctr ;
+    buf
+  in
+  let enc = Crypto.crypt ~key:sendaes ~ctr (Cstruct.of_string data) in
+  let our_id = Int32.pred keys.our_keyid in
+  let data = Builder.data version instances our_id keys.their_keyid (snd keys.dh) our_ctr enc in
+  let mac = Crypto.sha1mac ~key:sendmac data in
+  let reveal = Builder.encode_data (Cstruct.create 0) in
+  (our_ctr,
+   match wrap_b64string [ data ; mac ; reveal] with
+   | Some x -> [x]
+   | None -> [])
 
 let send_otr ctx data =
   match ctx.state.message_state with
@@ -144,27 +167,12 @@ let send_otr ctx data =
     (ctx, [Builder.tag ctx.config.versions ^ data], None)
   | MSGSTATE_PLAINTEXT -> (ctx, [data], None)
   | MSGSTATE_ENCRYPTED keys ->
-    let (dh_secret, gx), gy = (keys.previous_dh, keys.gy) in
-    let high = Crypto.mpi_gt gx gy in
-    let shared = match Crypto.dh_shared dh_secret gy with
-      | Some x -> x
-      | None -> assert false
-    in
-    let sendaes, sendmac, _, _ = Crypto.data_keys shared high in
-    let our_ctr = Int64.succ keys.our_ctr in
-    let ctr =
-      let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
-      Cstruct.BE.set_uint64 buf 0 our_ctr ;
-      buf
-    in
-    let enc = Crypto.crypt ~key:sendaes ~ctr (Cstruct.of_string data) in
-    let data = Builder.data ctx.version ctx.instances (Int32.pred keys.our_keyid) keys.their_keyid (snd keys.dh) our_ctr enc in
-    let mac = Crypto.sha1mac ~key:sendmac data in
-    let out = wrap_b64string [ data ; mac ; Builder.encode_data (Cstruct.create 0)] in
-    let out = match out with | Some x -> [x] | None -> [] in
-    let keys = { keys with our_ctr } in
-    let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
-    ({ ctx with state }, out, None)
+    ( match encrypt ctx.version ctx.instances keys data with
+      | Ok (our_ctr, out) ->
+        let keys = { keys with our_ctr } in
+        let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
+        ({ ctx with state }, out, None)
+      | Error e -> (ctx, [], Some ("otr error: " ^ e)) )
   | MSGSTATE_FINISHED ->
      (ctx, [], Some "message couldn't be sent since OTR session is finished.")
 
@@ -196,8 +204,9 @@ let handle (ctx : session) bytes =
     (ctx, out, Some ("Error: " ^ message), None, text)
   | `Data (bytes, message) ->
     Printf.printf "received data:" ; Cstruct.hexdump bytes ;
-    let ctx, out, warn, enc = handle_data ctx bytes in
-    (ctx, wrap_b64string out, warn, enc, message)
+    ( match handle_data ctx bytes with
+      | Ok (ctx, out, warn, enc) -> (ctx, wrap_b64string out, warn, enc, message)
+      | Error e -> (ctx, None, Some e, None, None) )
   | `String message ->
     Printf.printf "received plain string! %s\n" message ;
     let ctx, warn = handle_cleartext ctx in
