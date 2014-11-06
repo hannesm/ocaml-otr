@@ -51,6 +51,18 @@ let dh_key_await_revealsig ctx buf =
 
 let (<+>) = Nocrypto.Uncommon.Cs.append
 
+let mac_sign_encrypt hmac ckey priv gx gy keyid =
+  let pub = Crypto.OtrDsa.priv_to_wire priv in
+  let sigb =
+    let gxmpi = Builder.encode_data gx
+    and gympi = Builder.encode_data gy
+    in
+    let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; pub ; Builder.encode_int keyid ] in
+    Crypto.OtrDsa.signature ~key:priv mb
+  in
+  let xb = pub <+> Builder.encode_int keyid <+> sigb in
+  Crypto.crypt ~key:ckey ~ctr:(Crypto.ctr0 ()) xb
+
 let check_key_reveal_sig ctx (dh_secret, gx) r gy =
   safe_parse Parser.parse_gy gy >>= fun gy ->
   ( match Crypto.dh_shared dh_secret gy with
@@ -59,18 +71,7 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
   let keys = Crypto.derive_keys shared_secret in
   let { c ; m1 ; m2 } = keys in
   let keyidb = 1l in
-  let pubb = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
-  let sigb =
-    let gxmpi = Builder.encode_data gx
-    and gympi = Builder.encode_data gy
-    in
-    let mb = Crypto.mac ~key:m1 [ gxmpi ; gympi ; pubb ; Builder.encode_int keyidb ] in
-    Crypto.OtrDsa.signature ~key:ctx.config.dsa mb
-  in
-  let enc_sig =
-    let xb = pubb <+> Builder.encode_int keyidb <+> sigb in
-    Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) xb
-  in
+  let enc_sig = mac_sign_encrypt m1 c ctx.config.dsa gx gy keyidb in
   let mac = Crypto.mac160 ~key:m2 enc_sig in
   let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
   let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, (dh_secret, gx), gy) } in
@@ -104,19 +105,8 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   mac_verify m1 sigb pubb gx gy keyidb >>= fun () ->
   (* pick keyida *)
   let keyida = 1l in
-  let puba = Crypto.OtrDsa.priv_to_wire ctx.config.dsa in
-  let siga =
-    let gxmpi = Builder.encode_data gx
-    and gympi = Builder.encode_data gy
-    in
-    let ma = Crypto.mac ~key:m1' [ gympi ; gxmpi ; puba ; Builder.encode_int keyida ] in
-    Crypto.OtrDsa.signature ~key:ctx.config.dsa ma
-  in
-  let enc =
-    let xa = puba <+> Builder.encode_int keyida <+> siga in
-    Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) xa
-  in
-  let m = Crypto.mac160 ~key:m2' enc in
+  let enc_sig = mac_sign_encrypt m1' c' ctx.config.dsa gy gx keyida in
+  let m = Crypto.mac160 ~key:m2' enc_sig in
   let keys =
     let dh = Crypto.gen_dh_secret ()
     and previous_y = Cstruct.create 0
@@ -129,7 +119,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
     message_state = MSGSTATE_ENCRYPTED keys
   } in
   return ({ ctx with state ; their_dsa = Some pubb ; ssid },
-          Builder.signature ctx.version ctx.instances enc m)
+          Builder.signature ctx.version ctx.instances enc_sig m)
 
 let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
