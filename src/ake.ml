@@ -23,8 +23,8 @@ let instances = function
 let safe_parse f x =
   match f x with
   | Parser.Ok x -> return x
-  | Parser.Error _ -> fail "error while parsing"
-
+  | Parser.Error Parser.Underflow -> fail "underflow error while parsing"
+  | Parser.Error (Parser.Unknown x) -> fail ("error while parsing: " ^ x)
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =
   let (<+>) = Nocrypto.Uncommon.Cs.append in
