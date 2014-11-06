@@ -93,4 +93,5 @@ let gen_dh_secret () =
   Dh.gen_secret group
 
 let dh_shared dh_secret gy =
-  Dh.shared group dh_secret gy
+  try Some (Dh.shared group dh_secret gy)
+  with Dh.Invalid_public_key -> None

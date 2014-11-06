@@ -52,8 +52,10 @@ let dh_key_await_revealsig ctx buf =
 let (<+>) = Nocrypto.Uncommon.Cs.append
 
 let check_key_reveal_sig ctx (dh_secret, gx) r gy =
-  safe_parse Parser.parse_gy gy >|= fun gy ->
-  let shared_secret = Crypto.dh_shared dh_secret gy in
+  safe_parse Parser.parse_gy gy >>= fun gy ->
+  ( match Crypto.dh_shared dh_secret gy with
+    | Some s -> return s
+    | None -> fail "invalid DH public key"  ) >|= fun shared_secret ->
   let keys = Crypto.derive_keys shared_secret in
   let { c ; m1 ; m2 } = keys in
   let keyidb = 1l in
@@ -81,7 +83,9 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   let hgx' = Crypto.hash gx in
   guard (Nocrypto.Uncommon.Cs.equal hgx hgx') "hgx does not match hgx'" >>= fun () ->
   safe_parse Parser.parse_gy gx >>= fun gx ->
-  let shared_secret = Crypto.dh_shared dh_secret gx in
+  ( match Crypto.dh_shared dh_secret gx with
+    | Some x -> return x
+    | None -> fail "invalid DH public key" ) >>= fun shared_secret ->
   let { ssid ; c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
   let mac' = Crypto.mac160 ~key:m2 enc_data in
   guard (Nocrypto.Uncommon.Cs.equal mac mac') "mac does not match mac'" >>= fun () ->

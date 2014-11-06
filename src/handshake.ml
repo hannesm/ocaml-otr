@@ -91,7 +91,10 @@ let handle_encrypted_data ctx keys bytes =
   | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
     let (dh_secret, gx), gy = select_dh keys s_keyid r_keyid ctr in
     let high = Crypto.mpi_gt gx gy in
-    let shared = Crypto.dh_shared dh_secret gy in
+    let shared = match Crypto.dh_shared dh_secret gy with
+      | Some x -> x
+      | None -> assert false
+    in
     let _, _, recvaes, recvmac = Crypto.data_keys shared high in
     let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
     let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
@@ -144,7 +147,10 @@ let send_otr ctx data =
   | MSGSTATE_ENCRYPTED keys ->
     let (dh_secret, gx), gy = (keys.previous_dh, keys.y) in
     let high = Crypto.mpi_gt gx gy in
-    let shared = Crypto.dh_shared dh_secret gy in
+    let shared = match Crypto.dh_shared dh_secret gy with
+      | Some x -> x
+      | None -> assert false
+    in
     let sendaes, sendmac, _, _ = Crypto.data_keys shared high in
     let our_ctr = Int64.succ keys.our_ctr in
     let ctr =
