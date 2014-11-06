@@ -157,6 +157,15 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
   } in
   return { ctx with state ; their_dsa = Some puba ; ssid }
 
+let handle_commit_await_key ctx dh_c h buf =
+  (try return (Cstruct.sub buf (Cstruct.len buf - 32) 32)
+   with _ -> fail "underflow" ) >|= fun their_hash ->
+  if Crypto.mpi_gt h their_hash then
+    (ctx, [dh_c])
+  else
+    let ctx, dh_key = dh_key_await_revealsig ctx buf in
+    (ctx, [dh_key])
+
 let handle_auth ctx bytes =
   let open Packet in
   safe_parse Parser.parse_header bytes >>= fun (version, typ, instances, buf) ->
@@ -187,13 +196,8 @@ let handle_auth ctx bytes =
     return (ctx, [dh_key], None)
   | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
     (* compare hash *)
-    (* XXX: potentially throws! *)
-    let their_hash = Cstruct.sub buf (Cstruct.len buf - 32) 32 in
-    if Crypto.mpi_gt h their_hash then
-      return (ctx, [dh_c], None)
-    else
-      let ctx, dh_key = dh_key_await_revealsig ctx buf in
-      return (ctx, [dh_key], None)
+    handle_commit_await_key ctx dh_c h buf >|= fun (ctx, out) ->
+    (ctx, out, None)
   | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
     (* use this dh_commit ; resend dh_key *)
     let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) } in
