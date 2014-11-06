@@ -180,59 +180,55 @@ let handle_auth ctx bytes =
         return ctx
     | `V2, _ , _ -> return ctx
     | _ -> fail "wonky instances" ) >>= fun (ctx) ->
-  begin
-    match typ, ctx.state.auth_state with
-    | DH_COMMIT, AUTHSTATE_NONE ->
-      (* send dh_key,  go to AWAITING_REVEALSIG *)
+  match typ, ctx.state.auth_state with
+  | DH_COMMIT, AUTHSTATE_NONE ->
+    (* send dh_key,  go to AWAITING_REVEALSIG *)
+    let ctx, dh_key = dh_key_await_revealsig ctx buf in
+    return (ctx, [dh_key], None)
+  | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
+    (* compare hash *)
+    (* XXX: potentially throws! *)
+    let their_hash = Cstruct.sub buf (Cstruct.len buf - 32) 32 in
+    if Crypto.mpi_gt h their_hash then
+      return (ctx, [dh_c], None)
+    else
       let ctx, dh_key = dh_key_await_revealsig ctx buf in
       return (ctx, [dh_key], None)
-    | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
-      (* compare hash *)
-      (* XXX: potentially throws! *)
-      let their_hash = Cstruct.sub buf (Cstruct.len buf - 32) 32 in
-      if Crypto.mpi_gt h their_hash then
-        return (ctx, [dh_c], None)
-      else
-        let ctx, dh_key = dh_key_await_revealsig ctx buf in
-        return (ctx, [dh_key], None)
-    | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
-      (* use this dh_commit ; resend dh_key *)
-      let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) } in
-      let out = Builder.dh_key ctx.version ctx.instances gx in
-      return ({ ctx with state }, [out], None)
-    | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
-      (* send dh_key, go to AWAITING_REVEALSIG *)
-      let ctx, dh_key = dh_key_await_revealsig ctx buf in
-      return (ctx, [dh_key], None)
+  | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
+    (* use this dh_commit ; resend dh_key *)
+    let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) } in
+    let out = Builder.dh_key ctx.version ctx.instances gx in
+    return ({ ctx with state }, [out], None)
+  | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
+    (* send dh_key, go to AWAITING_REVEALSIG *)
+    let ctx, dh_key = dh_key_await_revealsig ctx buf in
+    return (ctx, [dh_key], None)
 
-    | DH_KEY, AUTHSTATE_AWAITING_DHKEY (_, _, dh_params, r) ->
-      (* reveal_sig -> AUTHSTATE_AWAITING_SIG *)
-      check_key_reveal_sig ctx dh_params r buf >|= fun (ctx, reveal) ->
-      (ctx, [reveal], None)
+  | DH_KEY, AUTHSTATE_AWAITING_DHKEY (_, _, dh_params, r) ->
+    (* reveal_sig -> AUTHSTATE_AWAITING_SIG *)
+    check_key_reveal_sig ctx dh_params r buf >|= fun (ctx, reveal) ->
+    (ctx, [reveal], None)
 
-    | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
-      (* same dh_key? -> retransmit REVEAL_SIG *)
-      safe_parse Parser.parse_gy buf >|= fun gy' ->
-      if Nocrypto.Uncommon.Cs.equal gy gy' then
-        (ctx, [reveal_sig], None)
-      else
-        (ctx, [], None)
-
-    | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
-      (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-      check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out) ->
-      (ctx, [out], None)
-
-    | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
-      (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-      check_sig ctx keys dh_params gy buf >|= fun ctx ->
+  | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
+    (* same dh_key? -> retransmit REVEAL_SIG *)
+    safe_parse Parser.parse_gy buf >|= fun gy' ->
+    if Nocrypto.Uncommon.Cs.equal gy gy' then
+      (ctx, [reveal_sig], None)
+    else
       (ctx, [], None)
 
-    | DATA, _ ->
-      Printf.printf "received data message while in plaintext mode, ignoring\n" ;
-      return (ctx, [], None)
+  | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
+    (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
+    check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out) ->
+    (ctx, [out], None)
 
-    | _ -> fail "what's that?"
-  end
+  | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
+    (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
+    check_sig ctx keys dh_params gy buf >|= fun ctx ->
+    (ctx, [], None)
 
+  | DATA, _ ->
+    Printf.printf "received data message while in plaintext mode, ignoring\n" ;
+    return (ctx, [], None)
 
+  | _ -> fail "what's that?"
