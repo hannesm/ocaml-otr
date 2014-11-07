@@ -189,26 +189,26 @@ let handle (ctx : session) bytes =
     Printf.printf "received plaintag!\n" ;
     ( match handle_whitespace_tag ctx versions with
       | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None, text)
-      | Error e -> (ctx, None, Some e, None, None) )
+      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
   | `Query (versions, text) ->
     Printf.printf "received query!\n" ;
     ( match handle_query ctx versions with
       | Ok (ctx, out) -> (ctx, wrap_b64string out, None, None, text)
-      | Error e -> (ctx, None, Some e, None, None) )
+      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
   | `Error (message, text) ->
     Printf.printf "received error!\n" ;
     let out = handle_error ctx in
-    (ctx, out, Some ("Error: " ^ message), None, text)
+    (reset_session ctx, out, Some ("Error: " ^ message), None, text)
   | `Data (bytes, message) ->
     Printf.printf "received data:" ; Cstruct.hexdump bytes ;
     ( match handle_data ctx bytes with
       | Ok (ctx, out, warn, enc) -> (ctx, wrap_b64string out, warn, enc, message)
-      | Error e -> (ctx, None, Some e, None, None) )
+      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
   | `String message ->
     Printf.printf "received plain string! %s\n" message ;
     let ctx, warn = handle_cleartext ctx in
     (ctx, None, warn, None, Some message)
-  | `ParseError (warn, message) ->
-    Printf.printf "parse error! %s (input %s)\n" warn message ;
+  | `ParseError (err, message) ->
+    Printf.printf "parse error! %s (input %s)\n" err message ;
     let ctx, warn = handle_cleartext ctx in
-    (ctx, None, warn, None, Some message)
+    (reset_session ctx, Some ("?OTR Error: " ^ err), warn, None, Some message)

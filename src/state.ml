@@ -75,3 +75,6 @@ let empty_session ?policies ?versions ~dsa () =
   let config = { policies ; versions ; dsa } in
   let state = { message_state = MSGSTATE_PLAINTEXT ; auth_state = AUTHSTATE_NONE } in
   { instances = None ; version = `V3 ; state ; config ; their_dsa = None ; ssid = Cstruct.create 0 ; high = false }
+
+let reset_session ctx =
+  empty_session ~policies:ctx.config.policies ~versions:ctx.config.versions ~dsa:ctx.config.dsa ()
