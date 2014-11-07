@@ -24,17 +24,15 @@ let handle_whitespace_tag ctx their_versions =
   in
   if policy ctx `WHITESPACE_START_AKE then
     match Ake.dh_commit ctx their_versions with
-    | Ake.Ok (ctx, out) -> return (ctx, out, warn)
-    | Ake.Error e ->
-      Printf.printf "AKE error: %s\n" e ;
-      fail e
+    | Ake.Ok (ctx, out) -> return (ctx, Some out, warn)
+    | Ake.Error e -> fail e
     else
-      return (ctx, [], warn)
+      return (ctx, None, warn)
 
 let handle_query ctx their_versions =
   match Ake.dh_commit ctx their_versions with
-  | Ake.Ok (ctx, out) -> return (ctx, out)
-  | Ake.Error e -> Printf.printf "AKE error : %s\n" e ; fail e
+  | Ake.Ok (ctx, out) -> return (ctx, Some out)
+  | Ake.Error e -> fail e
 
 let handle_error ctx =
   if policy ctx `ERROR_START_AKE then
@@ -109,7 +107,7 @@ let handle_encrypted_data ctx keys bytes =
     (* retain some information: dh_y, ctr, data_keys *)
     update_keys keys s_keyid r_keyid dh_y ctr >|= fun keys ->
     let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
-    ({ ctx with state }, [], None, Some txt)
+    ({ ctx with state }, None, None, Some txt)
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
@@ -123,10 +121,10 @@ let handle_data ctx bytes =
   | _ -> fail ("couldn't handle data")
 
 let wrap_b64string = function
-  | [] -> None
-  | msgs ->
-    let encode = Nocrypto.(Base64.encode (Uncommon.Cs.concat msgs)) in
-    Some ("?OTR:" ^ Cstruct.to_string encode ^ ".")
+  | None -> None
+  | Some m ->
+    let encoded = Nocrypto.Base64.encode m in
+    Some ("?OTR:" ^ Cstruct.to_string encoded ^ ".")
 
 (* operations triggered by a user *)
 let start_otr ctx =
@@ -151,40 +149,38 @@ let encrypt version instances keys data =
   let mac = Crypto.sha1mac ~key:sendmac data in
   let reveal = Builder.encode_data (Cstruct.create 0) in
   (our_ctr,
-   match wrap_b64string [ data ; mac ; reveal] with
-   | Some x -> [x]
-   | None -> [])
+   wrap_b64string (Some (Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal])))
 
 let send_otr ctx data =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
     (ctx,
-     [Builder.query_message ctx.config.versions],
+     Some (Builder.query_message ctx.config.versions),
      Some "didn't send message, there was no encrypted connection")
   | MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
     (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
-    (ctx, [Builder.tag ctx.config.versions ^ data], None)
-  | MSGSTATE_PLAINTEXT -> (ctx, [data], None)
+    (ctx, Some (Builder.tag ctx.config.versions ^ data), None)
+  | MSGSTATE_PLAINTEXT -> (ctx, Some data, None)
   | MSGSTATE_ENCRYPTED keys ->
     ( match encrypt ctx.version ctx.instances keys data with
       | Ok (our_ctr, out) ->
         let keys = { keys with our_ctr } in
         let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
         ({ ctx with state }, out, None)
-      | Error e -> (ctx, [], Some ("otr error: " ^ e)) )
+      | Error e -> (ctx, None, Some ("otr error: " ^ e)) )
   | MSGSTATE_FINISHED ->
-     (ctx, [], Some "message couldn't be sent since OTR session is finished.")
+     (ctx, None, Some "message couldn't be sent since OTR session is finished.")
 
 let end_otr ctx =
   let state = { ctx.state with message_state = MSGSTATE_PLAINTEXT } in
   match ctx.state.message_state with
-  | MSGSTATE_PLAINTEXT -> (ctx, [], None)
+  | MSGSTATE_PLAINTEXT -> (ctx, None, None)
   | MSGSTATE_ENCRYPTED _ ->
      (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
      (* let out = data TLV1 in *)
-     ({ ctx with state }, [], None)
+     ({ ctx with state }, None, None)
   | MSGSTATE_FINISHED ->
-     ({ ctx with state }, [], None)
+     ({ ctx with state }, None, None)
 
 (* session -> string -> (session * to_send * user_msg * data_received * cleartext_received) *)
 let handle (ctx : session) bytes =
