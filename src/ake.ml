@@ -149,9 +149,7 @@ let handle_commit_await_key ctx dh_c h buf =
     let ctx, dh_key = dh_key_await_revealsig ctx buf in
     (ctx, [dh_key])
 
-let handle_auth ctx bytes =
-  let open Packet in
-  safe_parse Parser.parse_header bytes >>= fun (version, typ, instances, buf) ->
+let check_version_instances ctx version instances =
   ( match ctx.state.auth_state with
     | AUTHSTATE_NONE -> return { ctx with version }
     | _ ->
@@ -171,7 +169,12 @@ let handle_auth ctx bytes =
       else (* other side has an encrypted session with us, but we do not *)
         return ctx
     | `V2, _ , _ -> return ctx
-    | _ -> fail "wonky instances" ) >>= fun (ctx) ->
+    | _ -> fail "wonky instances" )
+
+let handle_auth ctx bytes =
+  let open Packet in
+  safe_parse Parser.parse_header bytes >>= fun (version, typ, instances, buf) ->
+  check_version_instances ctx version instances >>= fun ctx ->
   match typ, ctx.state.auth_state with
   | DH_COMMIT, AUTHSTATE_NONE ->
     (* send dh_key,  go to AWAITING_REVEALSIG *)
