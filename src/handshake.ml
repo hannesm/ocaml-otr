@@ -22,20 +22,19 @@ let handle_whitespace_tag ctx their_versions =
     | MSGSTATE_PLAINTEXT -> None
     | MSGSTATE_ENCRYPTED _ | MSGSTATE_FINISHED -> Some "unencrypted data"
   in
-  let ctx, data_out =
-    if policy ctx `WHITESPACE_START_AKE then
-      match Ake.dh_commit ctx their_versions with
-      | Ake.Ok d -> d
-      | Ake.Error e -> Printf.printf "AKE error: %s\n" e ; (ctx, [])
+  if policy ctx `WHITESPACE_START_AKE then
+    match Ake.dh_commit ctx their_versions with
+    | Ake.Ok (ctx, out) -> return (ctx, out, warn)
+    | Ake.Error e ->
+      Printf.printf "AKE error: %s\n" e ;
+      fail e
     else
-      (ctx, [])
-  in
-  (ctx, data_out, warn)
+      return (ctx, [], warn)
 
 let handle_query ctx their_versions =
   match Ake.dh_commit ctx their_versions with
-  | Ake.Ok d -> d
-  | Ake.Error e -> Printf.printf "AKE error : %s\n" e ; (ctx, [])
+  | Ake.Ok (ctx, out) -> return (ctx, out)
+  | Ake.Error e -> Printf.printf "AKE error : %s\n" e ; fail e
 
 let handle_error ctx =
   if policy ctx `ERROR_START_AKE then
@@ -118,7 +117,7 @@ let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
-      | Ake.Ok (ctx, out, enc) -> return (ctx, out, None, enc)
+      | Ake.Ok (ctx, out) -> return (ctx, out, None, None)
       | Ake.Error x ->  fail ("AKE error encountered" ^ x) )
   | MSGSTATE_ENCRYPTED keys -> handle_encrypted_data ctx keys bytes
   | _ -> fail ("couldn't handle data")
@@ -192,12 +191,14 @@ let handle (ctx : session) bytes =
   match Parser.classify_input bytes with
   | `PlainTag (versions, text) ->
     Printf.printf "received plaintag!\n" ;
-    let ctx, out, warn = handle_whitespace_tag ctx versions in
-    (ctx, wrap_b64string out, warn, None, text)
+    ( match handle_whitespace_tag ctx versions with
+      | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None, text)
+      | Error e -> (ctx, None, Some e, None, None) )
   | `Query (versions, text) ->
     Printf.printf "received query!\n" ;
-    let ctx, out = handle_query ctx versions in
-    (ctx, wrap_b64string out, None, None, text)
+    ( match handle_query ctx versions with
+      | Ok (ctx, out) -> (ctx, wrap_b64string out, None, None, text)
+      | Error e -> (ctx, None, Some e, None, None) )
   | `Error (message, text) ->
     Printf.printf "received error!\n" ;
     let out = handle_error ctx in

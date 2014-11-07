@@ -176,46 +176,46 @@ let handle_auth ctx bytes =
   | DH_COMMIT, AUTHSTATE_NONE ->
     (* send dh_key,  go to AWAITING_REVEALSIG *)
     let ctx, dh_key = dh_key_await_revealsig ctx buf in
-    return (ctx, [dh_key], None)
+    return (ctx, [dh_key])
   | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
     (* compare hash *)
     handle_commit_await_key ctx dh_c h buf >|= fun (ctx, out) ->
-    (ctx, out, None)
+    (ctx, out)
   | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
     (* use this dh_commit ; resend dh_key *)
     let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) } in
     let out = Builder.dh_key ctx.version ctx.instances gx in
-    return ({ ctx with state }, [out], None)
+    return ({ ctx with state }, [out])
   | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
     (* send dh_key, go to AWAITING_REVEALSIG *)
     let ctx, dh_key = dh_key_await_revealsig ctx buf in
-    return (ctx, [dh_key], None)
+    return (ctx, [dh_key])
 
   | DH_KEY, AUTHSTATE_AWAITING_DHKEY (_, _, dh_params, r) ->
     (* reveal_sig -> AUTHSTATE_AWAITING_SIG *)
     check_key_reveal_sig ctx dh_params r buf >|= fun (ctx, reveal) ->
-    (ctx, [reveal], None)
+    (ctx, [reveal])
 
   | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
     (* same dh_key? -> retransmit REVEAL_SIG *)
     safe_parse Parser.parse_gy buf >|= fun gy' ->
     if Nocrypto.Uncommon.Cs.equal gy gy' then
-      (ctx, [reveal_sig], None)
+      (ctx, [reveal_sig])
     else
-      (ctx, [], None)
+      (ctx, [])
 
   | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
     (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
     check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out) ->
-    (ctx, [out], None)
+    (ctx, [out])
 
   | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
     (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
     check_sig ctx keys dh_params gy buf >|= fun ctx ->
-    (ctx, [], None)
+    (ctx, [])
 
   | DATA, _ ->
     Printf.printf "received data message while in plaintext mode, ignoring\n" ;
-    return (ctx, [], None)
+    return (ctx, [])
 
-  | _ -> (* ignore this message *) return (ctx, [], None)
+  | _ -> (* ignore this message *) return (ctx, [])
