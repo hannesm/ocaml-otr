@@ -218,4 +218,4 @@ let handle_auth ctx bytes =
     Printf.printf "received data message while in plaintext mode, ignoring\n" ;
     return (ctx, [], None)
 
-  | _ -> fail "what's that?"
+  | _ -> (* ignore this message *) return (ctx, [], None)
