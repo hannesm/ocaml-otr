@@ -74,6 +74,8 @@ let otr_mark, otr_err_mark, otr_query_mark, tag_prefix =
    re "?OTR",
    re " \t  \t\t\t\t \t \t \t  ")
 
+open Sexplib.Conv
+
 type ret = [
   | `Data of Cstruct.t * string option
   | `ParseError of string * string
@@ -81,7 +83,7 @@ type ret = [
   | `PlainTag of State.version list * string option
   | `Query of State.version list * string option
   | `String of string
-]
+] with sexp
 
 let parse_data_exn data =
   match string_split data (String.index data '.') with

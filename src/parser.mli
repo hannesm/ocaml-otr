@@ -11,7 +11,7 @@ type ret = [
   | `PlainTag of State.version list * string option
   | `Query of State.version list * string option
   | `String of string
-]
+] with sexp
 
 val classify_input : string -> ret
 

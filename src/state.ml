@@ -1,4 +1,6 @@
 
+open Sexplib.Conv
+
 type keyblock = {
   ssid : Cstruct.t ;
   c    : Cstruct.t ;
@@ -7,9 +9,9 @@ type keyblock = {
   m2   : Cstruct.t ;
   m1'  : Cstruct.t ;
   m2'  : Cstruct.t ;
-}
+} with sexp
 
-type dh_params = (Nocrypto.Dh.secret * Cstruct.t)
+type dh_params = (Nocrypto.Dh.secret * Cstruct.t) with sexp
 
 type encryption_keys = {
   dh : dh_params ;
@@ -20,38 +22,40 @@ type encryption_keys = {
   previous_gy : Cstruct.t ;
   their_keyid : int32 ;
   their_ctr : int64 ;
-}
+} with sexp
 
 type message_state =
   | MSGSTATE_PLAINTEXT
   | MSGSTATE_ENCRYPTED of encryption_keys
   | MSGSTATE_FINISHED
+with sexp
 
 type auth_state =
   | AUTHSTATE_NONE
   | AUTHSTATE_AWAITING_DHKEY of Cstruct.t * Cstruct.t * dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_REVEALSIG of dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_SIG of Cstruct.t * keyblock * dh_params * Cstruct.t
+with sexp
 
 type policy = [
   | `REQUIRE_ENCRYPTION
   | `SEND_WHITESPACE_TAG
   | `WHITESPACE_START_AKE
   | `ERROR_START_AKE
-]
+] with sexp
 
-type version = [ `V2 | `V3 ]
+type version = [ `V2 | `V3 ] with sexp
 
 type config = {
   policies : policy list ;
   versions : version list ;
   dsa      : Nocrypto.Dsa.priv ;
-}
+} with sexp
 
 type state = {
   message_state : message_state ;
   auth_state    : auth_state ;
-}
+} with sexp
 
 type session = {
   instances : (int32 * int32) option ;
@@ -61,7 +65,7 @@ type session = {
   their_dsa : Nocrypto.Dsa.pub option ;
   ssid : Cstruct.t ;
   high : bool ;
-}
+} with sexp
 
 let (<?>) ma b = match ma with None -> b | Some a -> a
 
