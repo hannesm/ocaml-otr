@@ -119,7 +119,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
     auth_state = AUTHSTATE_NONE ;
     message_state = MSGSTATE_ENCRYPTED keys
   } in
-  return ({ ctx with state ; their_dsa = Some pubb ; ssid },
+  return ({ ctx with state ; their_dsa = Some pubb ; ssid ; high = false },
           Builder.signature ctx.version ctx.instances enc_sig m)
 
 let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
@@ -138,7 +138,7 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
     auth_state = AUTHSTATE_NONE ;
     message_state = MSGSTATE_ENCRYPTED keys
   } in
-  return { ctx with state ; their_dsa = Some puba ; ssid }
+  return { ctx with state ; their_dsa = Some puba ; ssid ; high = true }
 
 let handle_commit_await_key ctx dh_c h buf =
   (try return (Cstruct.sub buf (Cstruct.len buf - 32) 32)
