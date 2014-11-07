@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: c4a3ce07c3f275bba2387072bf5e8ccd)
+# DO NOT EDIT (digest: 00e74e57ec00ddc853456772f29f1420)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -16,6 +16,7 @@ true: annot, bin_annot
 "_darcs": not_hygienic
 # Library otr
 "src/otr.cmxs": use_otr
+"src/tracing.cmx": for-pack(Otr)
 "src/packet.cmx": for-pack(Otr)
 "src/control.cmx": for-pack(Otr)
 "src/crypto.cmx": for-pack(Otr)
@@ -27,6 +28,7 @@ true: annot, bin_annot
 <src/*.ml{,i,y}>: pkg_cstruct
 <src/*.ml{,i,y}>: pkg_cstruct.syntax
 <src/*.ml{,i,y}>: pkg_nocrypto
+<src/*.ml{,i,y}>: pkg_sexplib.syntax
 # Library tests
 "tests/tests.cmxs": use_tests
 # Executable test_runner
@@ -35,6 +37,7 @@ true: annot, bin_annot
 "tests/unittestrunner.native": pkg_cstruct.unix
 "tests/unittestrunner.native": pkg_nocrypto
 "tests/unittestrunner.native": pkg_oUnit
+"tests/unittestrunner.native": pkg_sexplib.syntax
 "tests/unittestrunner.native": use_otr
 "tests/unittestrunner.native": use_tests
 <tests/*.ml{,i,y}>: pkg_cstruct
@@ -42,6 +45,7 @@ true: annot, bin_annot
 <tests/*.ml{,i,y}>: pkg_cstruct.unix
 <tests/*.ml{,i,y}>: pkg_nocrypto
 <tests/*.ml{,i,y}>: pkg_oUnit
+<tests/*.ml{,i,y}>: pkg_sexplib.syntax
 <tests/*.ml{,i,y}>: use_otr
 <tests/*.ml{,i,y}>: use_tests
 # OASIS_STOP
