@@ -148,8 +148,9 @@ let encrypt version instances keys data =
   let data = Builder.data version instances our_id keys.their_keyid (snd keys.dh) our_ctr enc in
   let mac = Crypto.sha1mac ~key:sendmac data in
   let reveal = Builder.encode_data (Cstruct.create 0) in
-  (our_ctr,
-   wrap_b64string (Some (Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal])))
+  let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
+  ({ keys with our_ctr },
+   wrap_b64string (Some out))
 
 let send_otr ctx data =
   match ctx.state.message_state with
@@ -163,8 +164,7 @@ let send_otr ctx data =
   | MSGSTATE_PLAINTEXT -> (ctx, Some data, None)
   | MSGSTATE_ENCRYPTED keys ->
     ( match encrypt ctx.version ctx.instances keys data with
-      | Ok (our_ctr, out) ->
-        let keys = { keys with our_ctr } in
+      | Ok (keys, out) ->
         let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
         ({ ctx with state }, out, None)
       | Error e -> (ctx, None, Some ("otr error: " ^ e)) )
