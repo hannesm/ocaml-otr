@@ -56,26 +56,22 @@ let select_dh keys send recv =
 
 let update_keys keys s_keyid r_keyid dh_y ctr =
   let keys = { keys with their_ctr = ctr } in
-  ( if keys.their_keyid = s_keyid then
-      return {
-        keys with their_keyid = Int32.succ s_keyid ;
+  let keys =
+    if keys.their_keyid = s_keyid then
+      { keys with their_keyid = Int32.succ s_keyid ;
                   previous_gy = keys.gy ;
                   gy = dh_y ;
-                  their_ctr = 0L ;
-      }
+                  their_ctr = 0L ; }
     else
-      (guard (keys.their_keyid = Int32.succ s_keyid) "wrong keyid" >|= fun () ->
-       keys) ) >>= fun keys ->
+      keys
+  in
   if keys.our_keyid = r_keyid then
-    return {
-      keys with our_keyid = Int32.succ r_keyid ;
+    { keys with our_keyid = Int32.succ r_keyid ;
                 previous_dh = keys.dh ;
                 dh = Crypto.gen_dh_secret () ;
-                our_ctr = 0L ;
-    }
+                our_ctr = 0L ; }
   else
-    (guard (keys.our_keyid = Int32.succ r_keyid) "wrong keyid" >|= fun () ->
-     keys)
+    keys
 
 let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
@@ -99,7 +95,7 @@ let handle_encrypted_data ctx keys bytes =
         buf
       in
       let dec = Crypto.crypt ~key:recvaes ~ctr:ctrcs encdata in
-      guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >>= fun () ->
+      guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >|= fun () ->
       (* might contain trailing 0 *)
       let last = pred (Cstruct.len dec) in
       (* actually search for first 0x00 -- might also indicate another TLV! *)
@@ -108,8 +104,7 @@ let handle_encrypted_data ctx keys bytes =
         else
           Cstruct.to_string dec
       in
-      (* retain some information: dh_y, ctr, data_keys *)
-      update_keys keys s_keyid r_keyid dh_y ctr' >|= fun keys ->
+      let keys = update_keys keys s_keyid r_keyid dh_y ctr' in
       let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
       ({ ctx with state }, None, None, Some txt)
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
