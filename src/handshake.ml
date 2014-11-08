@@ -54,19 +54,19 @@ let select_dh keys send recv =
         keys.previous_dh ) ) >|= fun dh ->
   (dh, gy, ctr)
 
-let update_keys keys s_keyid r_keyid dh_y ctr =
+let update_keys keys send recv dh_y ctr =
   let keys = { keys with their_ctr = ctr } in
   let keys =
-    if keys.their_keyid = s_keyid then
-      { keys with their_keyid = Int32.succ s_keyid ;
+    if keys.their_keyid = send then
+      { keys with their_keyid = Int32.succ send ;
                   previous_gy = keys.gy ;
                   gy = dh_y ;
                   their_ctr = 0L ; }
     else
       keys
   in
-  if keys.our_keyid = r_keyid then
-    { keys with our_keyid = Int32.succ r_keyid ;
+  if keys.our_keyid = recv then
+    { keys with our_keyid = Int32.succ recv ;
                 previous_dh = keys.dh ;
                 dh = Crypto.gen_dh_secret () ;
                 our_ctr = 0L ; }
