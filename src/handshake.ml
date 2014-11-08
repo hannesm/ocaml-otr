@@ -40,20 +40,19 @@ let handle_error ctx =
   else
     None
 
-let select_dh keys send recv ctr =
+let select_dh keys send recv =
   ( if keys.their_keyid = send then
-      return keys.gy
+      return (keys.gy, 0L)
     else
       ( guard (keys.their_keyid = Int32.succ send) "wrong keyid" >>= fun () ->
-        guard (Cstruct.len keys.previous_gy > 0) "no previous gy" >>= fun () ->
-        guard (ctr > keys.their_ctr ) "invalid counter" >|= fun () ->
-        keys.previous_gy ) ) >>= fun gy ->
+        guard (Cstruct.len keys.previous_gy > 0) "no previous gy" >|= fun () ->
+        (keys.previous_gy, keys.their_ctr) ) ) >>= fun (gy, ctr) ->
   ( if keys.our_keyid = recv then
       return keys.dh
     else
       ( guard (keys.our_keyid = Int32.succ recv) "wrong keyid" >|= fun () ->
         keys.previous_dh ) ) >|= fun dh ->
-  (dh, gy)
+  (dh, gy, ctr)
 
 let update_keys keys s_keyid r_keyid dh_y ctr =
   let keys = { keys with their_ctr = ctr } in
@@ -80,34 +79,39 @@ let update_keys keys s_keyid r_keyid dh_y ctr =
 
 let handle_encrypted_data ctx keys bytes =
   match Parser.parse_check_data ctx.version ctx.instances bytes with
-  | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
-    select_dh keys s_keyid r_keyid ctr >>= fun ((dh_secret, gx), gy) ->
-    let high = Crypto.mpi_gt gx gy in
-    ( match Crypto.dh_shared dh_secret gy with
-      | Some x -> return x
-      | None -> fail "invalid DH public key" ) >>= fun shared ->
-    let _, _, recvaes, recvmac = Crypto.data_keys shared high in
-    let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
-    guard (stop >= 0) "invalid data" >>= fun () ->
-    let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
-    let ctrcs =
-      let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
-      Cstruct.BE.set_uint64 buf 0 ctr ;
-      buf
-    in
-    let dec = Crypto.crypt ~key:recvaes ~ctr:ctrcs encdata in
-    guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >>= fun () ->
-    (* might contain trailing 0 *)
-    let last = pred (Cstruct.len dec) in
-    let txt = if Cstruct.get_uint8 dec last = 0 then
-        Cstruct.to_string (Cstruct.sub dec 0 last)
-      else
-        Cstruct.to_string dec
-    in
-    (* retain some information: dh_y, ctr, data_keys *)
-    update_keys keys s_keyid r_keyid dh_y ctr >|= fun keys ->
-    let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
-    ({ ctx with state }, None, None, Some txt)
+  | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
+    select_dh keys s_keyid r_keyid >>= fun ((dh_secret, gx), gy, ctr) ->
+    if ctr' <= ctr then
+      (Printf.printf "invalid counter, ignoring message\n" ;
+       return (ctx, None, Some "ignoring message with invalid counter", None) )
+    else
+      let high = Crypto.mpi_gt gx gy in
+      ( match Crypto.dh_shared dh_secret gy with
+        | Some x -> return x
+        | None -> fail "invalid DH public key" ) >>= fun shared ->
+      let _, _, recvaes, recvmac = Crypto.data_keys shared high in
+      let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
+      guard (stop >= 0) "invalid data" >>= fun () ->
+      let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
+      let ctrcs =
+        let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
+        Cstruct.BE.set_uint64 buf 0 ctr' ;
+        buf
+      in
+      let dec = Crypto.crypt ~key:recvaes ~ctr:ctrcs encdata in
+      guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >>= fun () ->
+      (* might contain trailing 0 *)
+      let last = pred (Cstruct.len dec) in
+      (* actually search for first 0x00 -- might also indicate another TLV! *)
+      let txt = if Cstruct.get_uint8 dec last = 0 then
+          Cstruct.to_string (Cstruct.sub dec 0 last)
+        else
+          Cstruct.to_string dec
+      in
+      (* retain some information: dh_y, ctr, data_keys *)
+      update_keys keys s_keyid r_keyid dh_y ctr' >|= fun keys ->
+      let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
+      ({ ctx with state }, None, None, Some txt)
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
