@@ -76,3 +76,14 @@ let data version instances keyida keyidb dh_y ctr data =
     buf
   in
   header <+> keys <+> encode_data dh_y <+> ctr <+> encode_data data
+
+let tlv ?data typ =
+  let buf = Cstruct.create 4 in
+  Cstruct.BE.set_uint16 buf 0 typ ;
+  match data with
+  | Some payload ->
+    Cstruct.BE.set_uint16 buf 2 (Cstruct.len payload) ;
+    buf <+> payload
+  | None ->
+    Cstruct.BE.set_uint16 buf 2 0 ;
+    buf

@@ -191,10 +191,12 @@ let end_otr ctx =
   let state = { ctx.state with message_state = MSGSTATE_PLAINTEXT } in
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT -> (ctx, None, None)
-  | MSGSTATE_ENCRYPTED _ ->
-     (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
-     (* let out = data TLV1 in *)
-     ({ ctx with state }, None, None)
+  | MSGSTATE_ENCRYPTED keys ->
+    (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
+    let data = Builder.tlv 1 in
+    ( match encrypt ctx.version ctx.instances keys (Cstruct.to_string data) with
+      | Ok (_keys, out) -> ({ ctx with state }, out, None)
+      | Error e -> ({ ctx with state }, None, None) )
   | MSGSTATE_FINISHED ->
      ({ ctx with state }, None, None)
 
