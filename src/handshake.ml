@@ -109,7 +109,7 @@ let handle_encrypted_data ctx keys bytes =
       guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >|= fun () ->
       (* might contain trailing 0 *)
       let last = pred (Cstruct.len dec) in
-      (* actually search for first 0x00 -- might also indicate another TLV! *)
+      (* TODO: actually search for first 0x00 -- might also indicate other TLV! *)
       let txt = if Cstruct.get_uint8 dec last = 0 then
           Cstruct.to_string (Cstruct.sub dec 0 last)
         else
@@ -193,8 +193,8 @@ let end_otr ctx =
   | MSGSTATE_PLAINTEXT -> (ctx, None, None)
   | MSGSTATE_ENCRYPTED keys ->
     (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
-    let data = Builder.tlv 1 in
-    ( match encrypt ctx.version ctx.instances keys (Cstruct.to_string data) with
+    let data = Cstruct.to_string (Builder.tlv 1) in
+    ( match encrypt ctx.version ctx.instances keys ("\000" ^ data) with
       | Ok (_keys, out) -> ({ ctx with state }, out, None)
       | Error e -> ({ ctx with state }, None, None) )
   | MSGSTATE_FINISHED ->
