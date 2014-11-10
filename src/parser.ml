@@ -201,14 +201,8 @@ let parse_data_body buf =
   guard (len buf = 0) Underflow >|= fun () ->
   (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
 
-let parse_check_data version instances buf =
-  parse_header buf >>= fun (version', typ, instances', buf) ->
-  guard (version = version') (Unknown "version") >>= fun () ->
-  ( match version, instances, instances' with
-    | `V3, Some (mya, myb), Some (youra, yourb) ->
-      guard (mya = youra) (Unknown "instance") >>= fun () ->
-      guard (myb = yourb) (Unknown "instance")
-    | `V2, _, _ -> return ()
-    | _ -> fail (Unknown "instances")) >>= fun () ->
+let parse_data buf =
+  parse_header buf >>= fun (version, typ, instances, buf) ->
   guard (typ = DATA) (Unknown "type") >>= fun () ->
-  parse_data_body buf
+  parse_data_body buf >|= fun (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
+  (version, instances, flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)

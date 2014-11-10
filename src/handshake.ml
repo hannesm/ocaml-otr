@@ -77,12 +77,20 @@ let update_keys keys send recv dh_y ctr =
     keys
 
 let handle_encrypted_data ctx keys bytes =
-  match Parser.parse_check_data ctx.version ctx.instances bytes with
-  | Parser.Ok (flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
+  match Parser.parse_data bytes with
+  | Parser.Ok (version, instances, flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
     select_dh keys s_keyid r_keyid >>= fun ((dh_secret, gx), gy, ctr) ->
-    if ctr' <= ctr then
-      (Printf.printf "invalid counter, ignoring message\n" ;
-       return (ctx, None, Some "ignoring message with invalid counter", None) )
+    if version <> ctx.version then
+      return (ctx, None, Some "ignoring message with invalid version", None)
+    else if
+      match version, ctx.instances, instances with
+      | `V3, Some (mya, myb), Some (youra, yourb) when (mya = youra) && (myb = yourb) -> false
+      | `V2, _, _ -> false
+      | _ -> true
+    then
+      return (ctx, None, Some "ignoring message with invalid instances", None)
+    else if ctr' <= ctr then
+      return (ctx, None, Some "ignoring message with invalid counter", None)
     else
       let high = Crypto.mpi_gt gx gy in
       ( match Crypto.dh_shared dh_secret gy with
