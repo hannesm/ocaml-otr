@@ -15,6 +15,13 @@ let handle_cleartext ctx =
   in
   (ctx, warn)
 
+let commit ctx their_versions warn =
+  match Ake.dh_commit ctx their_versions with
+  | Ake.Ok (ctx, out) -> return (ctx, Some out, warn)
+  | Ake.Error (Ake.Unknown e) -> fail e
+  | Ake.Error Ake.VersionMismatch -> fail "couldn't agree on a version"
+  | Ake.Error Ake.InstanceMismatch -> fail "wrong instances"
+
 let handle_whitespace_tag ctx their_versions =
   let warn = match ctx.state.message_state with
     | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
@@ -23,16 +30,12 @@ let handle_whitespace_tag ctx their_versions =
     | MSGSTATE_ENCRYPTED _ | MSGSTATE_FINISHED -> Some "unencrypted data"
   in
   if policy ctx `WHITESPACE_START_AKE then
-    match Ake.dh_commit ctx their_versions with
-    | Ake.Ok (ctx, out) -> return (ctx, Some out, warn)
-    | Ake.Error e -> fail e
-    else
-      return (ctx, None, warn)
+    commit ctx their_versions warn
+  else
+    return (ctx, None, warn)
 
 let handle_query ctx their_versions =
-  match Ake.dh_commit ctx their_versions with
-  | Ake.Ok (ctx, out) -> return (ctx, Some out)
-  | Ake.Error e -> fail e
+  commit ctx their_versions None
 
 let handle_error ctx =
   if policy ctx `ERROR_START_AKE then
@@ -115,7 +118,13 @@ let handle_data ctx bytes =
   | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
       | Ake.Ok (ctx, out) -> return (ctx, out, None, None)
-      | Ake.Error x ->  fail ("AKE error encountered" ^ x) )
+      | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered" ^ x)
+      | Ake.Error Ake.VersionMismatch ->
+        Printf.printf "packet with wrong version received, ignoring\n" ;
+        return (ctx, None, Some "wrong version in packet", None)
+      | Ake.Error Ake.InstanceMismatch ->
+        Printf.printf "packet with wrong instances received, ignoring\n" ;
+        return (ctx, None, Some "wrong instances in packet", None) )
   | MSGSTATE_ENCRYPTED keys -> handle_encrypted_data ctx keys bytes
   | _ -> fail ("couldn't handle data")
 
@@ -190,7 +199,7 @@ let handle (ctx : session) bytes =
       | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
   | `Query (versions, text) ->
     ( match handle_query ctx versions with
-      | Ok (ctx, out) -> (ctx, wrap_b64string out, None, None, text)
+      | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None, text)
       | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
   | `Error (message, text) ->
     let out = handle_error ctx in

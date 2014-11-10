@@ -2,7 +2,11 @@
 open State
 
 (* Monadic control-flow core. *)
-type error = string
+type error =
+  | Unknown of string
+  | VersionMismatch
+  | InstanceMismatch
+
 include Control.Or_error_make (struct type err = error end)
 
 let instance_tag () =
@@ -23,8 +27,8 @@ let instances = function
 let safe_parse f x =
   match f x with
   | Parser.Ok x -> return x
-  | Parser.Error Parser.Underflow -> fail "underflow error while parsing"
-  | Parser.Error (Parser.Unknown x) -> fail ("error while parsing: " ^ x)
+  | Parser.Error Parser.Underflow -> fail (Unknown "underflow error while parsing")
+  | Parser.Error (Parser.Unknown x) -> fail (Unknown ("error while parsing: " ^ x))
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =
   let (<+>) = Nocrypto.Uncommon.Cs.append in
@@ -44,13 +48,13 @@ let mac_verify hmac signature pub gx gy keyid =
   and gympi = Builder.encode_data gy
   in
   let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pub ; Builder.encode_int keyid ] in
-  guard (Crypto.OtrDsa.verify ~key:pub signature mb) "DSA verification failed" >|= fun () ->
+  guard (Crypto.OtrDsa.verify ~key:pub signature mb) (Unknown "DSA verification failed") >|= fun () ->
   Printf.printf "PUB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pub)
 
 (* authentication handshake *)
 let dh_commit ctx their_versions =
   match select_version ctx.config.versions their_versions with
-  | None -> fail "intersection of requested and supported versions is empty"
+  | None -> fail VersionMismatch
   | Some version ->
     let dh_secret, gx = Crypto.gen_dh_secret () in
     let r = Crypto.gen_symmetric_key () in
@@ -75,7 +79,7 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
   safe_parse Parser.parse_gy gy >>= fun gy ->
   ( match Crypto.dh_shared dh_secret gy with
     | Some s -> return s
-    | None -> fail "invalid DH public key"  ) >|= fun shared_secret ->
+    | None -> fail (Unknown "invalid DH public key")  ) >|= fun shared_secret ->
   let keys = Crypto.derive_keys shared_secret in
   let { c ; m1 ; m2 } = keys in
   let keyidb = 1l in
@@ -97,14 +101,14 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   safe_parse Parser.parse_dh_commit dh_commit >>= fun (gxenc, hgx) ->
   let gx = Crypto.crypt ~key:r ~ctr:(Crypto.ctr0 ()) gxenc in
   let hgx' = Crypto.hash gx in
-  guard (Nocrypto.Uncommon.Cs.equal hgx hgx') "hgx does not match hgx'" >>= fun () ->
+  guard (Nocrypto.Uncommon.Cs.equal hgx hgx') (Unknown "hgx does not match hgx'") >>= fun () ->
   safe_parse Parser.parse_gy gx >>= fun gx ->
   ( match Crypto.dh_shared dh_secret gx with
     | Some x -> return x
-    | None -> fail "invalid DH public key" ) >>= fun shared_secret ->
+    | None -> fail (Unknown "invalid DH public key") ) >>= fun shared_secret ->
   let { ssid ; c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
   let mac' = Crypto.mac160 ~key:m2 enc_data in
-  guard (Nocrypto.Uncommon.Cs.equal mac mac') "mac does not match mac'" >>= fun () ->
+  guard (Nocrypto.Uncommon.Cs.equal mac mac') (Unknown "mac does not match mac'") >>= fun () ->
   let xb = Crypto.crypt ~key:c ~ctr:(Crypto.ctr0 ()) enc_data in
   (* split into pubb, keyidb, sigb *)
   safe_parse Parser.parse_signature_data xb >>= fun ((p, q, gg, y), keyidb, sigb) ->
@@ -125,9 +129,9 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
 let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
   safe_parse Parser.decode_data signature >>= fun (enc_data, mac) ->
-  guard (Cstruct.len mac = 20) "mac has wrong length" >>= fun () ->
+  guard (Cstruct.len mac = 20) (Unknown "mac has wrong length") >>= fun () ->
   let mymac = Crypto.mac160 ~key:m2' enc_data in
-  guard (Nocrypto.Uncommon.Cs.equal mac mymac) "mac do not match" >>= fun () ->
+  guard (Nocrypto.Uncommon.Cs.equal mac mymac) (Unknown "mac do not match") >>= fun () ->
   let dec = Crypto.crypt ~key:c' ~ctr:(Crypto.ctr0 ()) enc_data in
   (* split into puba keyida siga(Ma) *)
   safe_parse Parser.parse_signature_data dec >>= fun ((p,q,gg,y), keyida, siga) ->
@@ -142,7 +146,7 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
 
 let handle_commit_await_key ctx dh_c h buf =
   (try return (Cstruct.sub buf (Cstruct.len buf - 32) 32)
-   with _ -> fail "underflow" ) >|= fun their_hash ->
+   with _ -> fail (Unknown "underflow") ) >|= fun their_hash ->
   if Crypto.mpi_gt h their_hash then
     (ctx, Some dh_c)
   else
@@ -153,14 +157,14 @@ let check_version_instances ctx version instances =
   ( match ctx.state.auth_state with
     | AUTHSTATE_NONE -> return { ctx with version }
     | _ ->
-      guard (version = ctx.version) "wrong version" >|= fun () ->
+      guard (version = ctx.version) VersionMismatch >|= fun () ->
       ctx ) >>= fun (ctx) ->
   ( match version, instances, ctx.instances with
     | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) when mysend = 0l ->
-      guard ((yourrecv = myrecv) && (Int32.shift_right_logical yoursend 8 > 0l)) "wrong instance tags" >|= fun () ->
+      guard ((yourrecv = myrecv) && (Int32.shift_right_logical yoursend 8 > 0l)) InstanceMismatch >|= fun () ->
       { ctx with instances = Some (yoursend, myrecv) }
     | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) ->
-      guard ((yourrecv = myrecv) && (yoursend = mysend)) "wrong instance tags" >|= fun () ->
+      guard ((yourrecv = myrecv) && (yoursend = mysend)) InstanceMismatch >|= fun () ->
       ctx
     | `V3, Some (yoursend, yourrecv), None ->
       if Int32.shift_right_logical yourrecv 8 = 0l then
@@ -169,7 +173,7 @@ let check_version_instances ctx version instances =
       else (* other side has an encrypted session with us, but we do not *)
         return ctx
     | `V2, _ , _ -> return ctx
-    | _ -> fail "wonky instances" )
+    | _ -> fail InstanceMismatch )
 
 let handle_auth ctx bytes =
   let open Packet in
