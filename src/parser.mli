@@ -25,3 +25,5 @@ val parse_dh_commit : Cstruct.t -> (Cstruct.t * Cstruct.t) or_error
 val parse_data : Cstruct.t -> (State.version * (int32 * int32) option * int * int32 * int32 * Cstruct.t * int64 * Cstruct.t * Cstruct.t * Cstruct.t) or_error
 
 val parse_query : string -> (State.version list * string option) or_error
+
+val parse_tlv : Cstruct.t -> (Packet.tlv_type option * Cstruct.t * Cstruct.t) or_error

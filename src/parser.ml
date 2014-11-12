@@ -206,3 +206,10 @@ let parse_data buf =
   guard (typ = DATA) (Unknown "type") >>= fun () ->
   parse_data_body buf >|= fun (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
   (version, instances, flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
+
+let parse_tlv_exn buf =
+  let typ = BE.get_uint16 buf 0 in
+  let l = BE.get_uint16 buf 2 in
+  (int_to_tlv_type typ, sub buf 4 l, shift buf (4 + l))
+
+let parse_tlv = catch parse_tlv_exn
