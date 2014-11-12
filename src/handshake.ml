@@ -121,6 +121,27 @@ let handle_encrypted_data ctx keys bytes =
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
+let encrypt version instances keys ?(reveal = Cstruct.create 0) data =
+  let (dh_secret, gx), gy = (keys.previous_dh, keys.gy) in
+  let high = Crypto.mpi_gt gx gy in
+  ( match Crypto.dh_shared dh_secret gy with
+    | Some x -> return x
+    | None -> fail "invalid DH public key" ) >|= fun shared ->
+  let sendaes, sendmac, _, _ = Crypto.data_keys shared high in
+  let our_ctr = Int64.succ keys.our_ctr in
+  let ctr =
+    let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
+    Cstruct.BE.set_uint64 buf 0 our_ctr ;
+    buf
+  in
+  let enc = Crypto.crypt ~key:sendaes ~ctr (Cstruct.of_string data) in
+  let our_id = Int32.pred keys.our_keyid in
+  let data = Builder.data version instances our_id keys.their_keyid (snd keys.dh) our_ctr enc in
+  let mac = Crypto.sha1mac ~key:sendmac data in
+  let reveal = Builder.encode_data reveal in
+  let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
+  ({ keys with our_ctr }, out)
+
 let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
@@ -146,28 +167,6 @@ let wrap_b64string = function
 let start_otr ctx =
   (ctx, Builder.query_message ctx.config.versions)
 
-let encrypt version instances keys data =
-  let (dh_secret, gx), gy = (keys.previous_dh, keys.gy) in
-  let high = Crypto.mpi_gt gx gy in
-  ( match Crypto.dh_shared dh_secret gy with
-    | Some x -> return x
-    | None -> fail "invalid DH public key" ) >|= fun shared ->
-  let sendaes, sendmac, _, _ = Crypto.data_keys shared high in
-  let our_ctr = Int64.succ keys.our_ctr in
-  let ctr =
-    let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
-    Cstruct.BE.set_uint64 buf 0 our_ctr ;
-    buf
-  in
-  let enc = Crypto.crypt ~key:sendaes ~ctr (Cstruct.of_string data) in
-  let our_id = Int32.pred keys.our_keyid in
-  let data = Builder.data version instances our_id keys.their_keyid (snd keys.dh) our_ctr enc in
-  let mac = Crypto.sha1mac ~key:sendmac data in
-  let reveal = Builder.encode_data (Cstruct.create 0) in
-  let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
-  ({ keys with our_ctr },
-   wrap_b64string (Some out))
-
 let send_otr ctx data =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
@@ -182,6 +181,7 @@ let send_otr ctx data =
     ( match encrypt ctx.version ctx.instances keys data with
       | Ok (keys, out) ->
         let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
+        let out = wrap_b64string (Some out) in
         ({ ctx with state }, out, None)
       | Error e -> (ctx, None, Some ("otr error: " ^ e)) )
   | MSGSTATE_FINISHED ->
@@ -195,7 +195,7 @@ let end_otr ctx =
     (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
     let data = Cstruct.to_string (Builder.tlv 1) in
     ( match encrypt ctx.version ctx.instances keys ("\000" ^ data) with
-      | Ok (_keys, out) -> ({ ctx with state }, out, None)
+      | Ok (_keys, out) -> ({ ctx with state }, wrap_b64string (Some out), None)
       | Error e -> ({ ctx with state }, None, None) )
   | MSGSTATE_FINISHED ->
      ({ ctx with state }, None, None)
