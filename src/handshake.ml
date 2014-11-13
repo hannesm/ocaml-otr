@@ -93,36 +93,31 @@ let handle_tlv state typ buf =
   | Some _ -> (state, None, Some "not handling this tlv")
   | None -> (state, None, Some "unknown tlv type")
 
-(*
-      let rec process_data state data out warn =
-        match Cstruct.len data with
-        | 0 -> (state, out, warn)
-        | _ -> match Parser.parse_tlv data with
-          | Parser.Ok (typ, buf, rest) ->
-            let state, out', warn' = handle_tlv state typ buf in
-            process_data state rest (out' :: out) (merge warn warn')
-          | Parser.Error _ -> (state, out, Some "ignoring malformed TLV")
-      in
-      let state, out, warn = process_data state (Cstruct.of_string data) [] None in
-      let out = match out with
-        | [] -> None
-        | xs ->
-          let xs = List.fold_left
-              (fun cs may ->
-                 match may with
-                 | None -> cs
-                 | Some c -> Nocrypto.Uncommon.Cs.concat [ c ; cs ])
-              (Cstruct.create 0)
-              xs
-          in
-          (* should be encrypted somewhere! *)
-          if Cstruct.len xs = 0 then
-            None
-          else
-            (Printf.printf "sending TLV" ; Cstruct.hexdump xs ;
-             Some xs)
-      in
-      *)
+let rec filter_map ?(f = fun x -> x) = function
+  | []    -> []
+  | x::xs ->
+      match f x with
+      | None    ->       filter_map ~f xs
+      | Some x' -> x' :: filter_map ~f xs
+
+let handle_tlvs state = function
+  | None -> return (state, None, None)
+  | Some data ->
+    let rec process_data state data out warn =
+      match Cstruct.len data with
+      | 0 -> (state, out, warn)
+      | _ -> match Parser.parse_tlv data with
+        | Parser.Ok (typ, buf, rest) ->
+          let state, out', warn' = handle_tlv state typ buf in
+          process_data state rest (out' :: out) (merge warn warn')
+        | Parser.Error _ -> (state, out, Some "ignoring malformed TLV")
+    in
+    let state, out, warn = process_data state (Cstruct.of_string data) [] None in
+    let out = match filter_map out with
+      | [] -> None
+      | xs -> Some (Cstruct.to_string (Nocrypto.Uncommon.Cs.concat xs))
+    in
+    return (state, out, warn)
 
 let decrypt keys version instances bytes =
   match Parser.parse_data bytes with
@@ -217,15 +212,14 @@ let handle_data ctx bytes =
         return (ctx, None, Some "wrong instances in packet", None) )
   | MSGSTATE_ENCRYPTED keys ->
     decrypt keys ctx.version ctx.instances bytes >>= fun (msg, data, warn, keys) ->
-    let message_state = MSGSTATE_ENCRYPTED keys in
-    (* handle_tlv state data >|= fun (state, out, warn) -> *)
-    let out = None in
+    let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
+    handle_tlvs state data >>= fun (state, out, warn) ->
     ( match out with
-      | None -> return (message_state, None)
+      | None -> return (state, None)
       | Some x -> match encrypt ctx.version ctx.instances keys x with
-        | Ok (keys, out) -> return (MSGSTATE_ENCRYPTED keys, wrap_b64string (Some out))
-        | Error e -> fail e ) >|= fun (message_state, out) ->
-    let state = { ctx.state with message_state } in
+        | Ok (keys, out) -> return ({ state with message_state = MSGSTATE_ENCRYPTED keys },
+                                    wrap_b64string (Some out))
+        | Error e -> fail e ) >|= fun (state, out) ->
     let ctx = { ctx with state } in
     (ctx, out, warn, msg)
   | MSGSTATE_FINISHED ->
