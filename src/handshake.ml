@@ -256,16 +256,17 @@ let send_otr ctx data =
      (ctx, None, Some "message couldn't be sent since OTR session is finished.")
 
 let end_otr ctx =
+  let state = { ctx.state with message_state = MSGSTATE_PLAINTEXT } in
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT -> (ctx, None, None)
   | MSGSTATE_ENCRYPTED keys ->
     (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
     let data = Cstruct.to_string (Builder.tlv 1) in
     ( match encrypt ctx.version ctx.instances keys ("\000" ^ data) with
-      | Ok (_keys, out) -> (reset_session ctx, wrap_b64string (Some out), None)
+      | Ok (_keys, out) -> ({ ctx with state }, wrap_b64string (Some out), None)
       | Error e -> (reset_session ctx, None, None) )
   | MSGSTATE_FINISHED ->
-     (reset_session ctx, None, None)
+     ({ ctx with state }, None, None)
 
 (* session -> string -> (session * to_send * user_msg * data_received * cleartext_received) *)
 let handle (ctx : session) bytes =
