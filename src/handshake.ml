@@ -76,21 +76,69 @@ let update_keys keys send recv dh_y ctr =
   else
     keys
 
-let handle_encrypted_data ctx keys bytes =
+let merge a b =
+  match a, b with
+  | None, None -> None
+  | None, Some a -> Some a
+  | Some a, None -> Some a
+  | Some a, Some b -> Some (a ^ b)
+
+let handle_tlv state typ buf =
+  let open Packet in
+  match typ with
+  | Some PADDING -> (state, None, None)
+  | Some DISCONNECTED -> ({ state with message_state = MSGSTATE_FINISHED },
+                          None,
+                          Some "OTR connection lost")
+  | Some _ -> (state, None, Some "not handling this tlv")
+  | None -> (state, None, Some "unknown tlv type")
+
+(*
+      let rec process_data state data out warn =
+        match Cstruct.len data with
+        | 0 -> (state, out, warn)
+        | _ -> match Parser.parse_tlv data with
+          | Parser.Ok (typ, buf, rest) ->
+            let state, out', warn' = handle_tlv state typ buf in
+            process_data state rest (out' :: out) (merge warn warn')
+          | Parser.Error _ -> (state, out, Some "ignoring malformed TLV")
+      in
+      let state, out, warn = process_data state (Cstruct.of_string data) [] None in
+      let out = match out with
+        | [] -> None
+        | xs ->
+          let xs = List.fold_left
+              (fun cs may ->
+                 match may with
+                 | None -> cs
+                 | Some c -> Nocrypto.Uncommon.Cs.concat [ c ; cs ])
+              (Cstruct.create 0)
+              xs
+          in
+          (* should be encrypted somewhere! *)
+          if Cstruct.len xs = 0 then
+            None
+          else
+            (Printf.printf "sending TLV" ; Cstruct.hexdump xs ;
+             Some xs)
+      in
+      *)
+
+let decrypt keys version instances bytes =
   match Parser.parse_data bytes with
-  | Parser.Ok (version, instances, flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
+  | Parser.Ok (version', instances', flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
     select_dh keys s_keyid r_keyid >>= fun ((dh_secret, gx), gy, ctr) ->
-    if version <> ctx.version then
-      return (ctx, None, Some "ignoring message with invalid version", None)
+    if version <> version' then
+      return (None, None, Some "ignoring message with invalid version", keys)
     else if
-      match version, ctx.instances, instances with
+      match version, instances, instances' with
       | `V3, Some (mya, myb), Some (youra, yourb) when (mya = youra) && (myb = yourb) -> false
       | `V2, _, _ -> false
       | _ -> true
     then
-      return (ctx, None, Some "ignoring message with invalid instances", None)
+      return (None, None, Some "ignoring message with invalid instances", keys)
     else if ctr' <= ctr then
-      return (ctx, None, Some "ignoring message with invalid counter", None)
+      return (None, None, Some "ignoring message with invalid counter", keys)
     else
       let high = Crypto.mpi_gt gx gy in
       ( match Crypto.dh_shared dh_secret gy with
@@ -100,24 +148,31 @@ let handle_encrypted_data ctx keys bytes =
       let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
       guard (stop >= 0) "invalid data" >>= fun () ->
       let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
-      let ctrcs =
-        let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
-        Cstruct.BE.set_uint64 buf 0 ctr' ;
-        buf
-      in
-      let dec = Crypto.crypt ~key:recvaes ~ctr:ctrcs encdata in
       guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >|= fun () ->
-      (* might contain trailing 0 *)
-      let last = pred (Cstruct.len dec) in
-      (* TODO: actually search for first 0x00 -- might also indicate other TLV! *)
-      let txt = if Cstruct.get_uint8 dec last = 0 then
-          Cstruct.to_string (Cstruct.sub dec 0 last)
-        else
-          Cstruct.to_string dec
+      let dec =
+        let ctrcs =
+          let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
+          Cstruct.BE.set_uint64 buf 0 ctr' ;
+          buf
+        in
+        let dec = Crypto.crypt ~key:recvaes ~ctr:ctrcs encdata in
+        Cstruct.to_string dec
+      in
+      let txt, data =
+        try
+          let stop = String.index dec '\000' in
+          let stop' = succ stop in
+          String.(sub dec 0 stop, sub dec stop' (length dec - stop'))
+        with _ -> (dec, "")
+      in
+      Printf.printf "received txt %s and data" txt;
+      Cstruct.hexdump (Cstruct.of_string data) ;
+      let maybe_s s = if String.length s = 0 then None else Some s in
+      let txt = maybe_s txt
+      and data = maybe_s data
       in
       let keys = update_keys keys s_keyid r_keyid dh_y ctr' in
-      let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
-      ({ ctx with state }, None, None, Some txt)
+      (txt, data, None, keys)
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
@@ -142,11 +197,17 @@ let encrypt version instances keys ?(reveal = Cstruct.create 0) data =
   let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
   ({ keys with our_ctr }, out)
 
+let wrap_b64string = function
+  | None -> None
+  | Some m ->
+    let encoded = Nocrypto.Base64.encode m in
+    Some ("?OTR:" ^ Cstruct.to_string encoded ^ ".")
+
 let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
-      | Ake.Ok (ctx, out) -> return (ctx, out, None, None)
+      | Ake.Ok (ctx, out) -> return (ctx, wrap_b64string out, None, None)
       | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered" ^ x)
       | Ake.Error Ake.VersionMismatch ->
         Printf.printf "packet with wrong version received, ignoring\n" ;
@@ -154,14 +215,21 @@ let handle_data ctx bytes =
       | Ake.Error Ake.InstanceMismatch ->
         Printf.printf "packet with wrong instances received, ignoring\n" ;
         return (ctx, None, Some "wrong instances in packet", None) )
-  | MSGSTATE_ENCRYPTED keys -> handle_encrypted_data ctx keys bytes
-  | _ -> fail ("couldn't handle data")
-
-let wrap_b64string = function
-  | None -> None
-  | Some m ->
-    let encoded = Nocrypto.Base64.encode m in
-    Some ("?OTR:" ^ Cstruct.to_string encoded ^ ".")
+  | MSGSTATE_ENCRYPTED keys ->
+    decrypt keys ctx.version ctx.instances bytes >>= fun (msg, data, warn, keys) ->
+    let message_state = MSGSTATE_ENCRYPTED keys in
+    (* handle_tlv state data >|= fun (state, out, warn) -> *)
+    let out = None in
+    ( match out with
+      | None -> return (message_state, None)
+      | Some x -> match encrypt ctx.version ctx.instances keys x with
+        | Ok (keys, out) -> return (MSGSTATE_ENCRYPTED keys, wrap_b64string (Some out))
+        | Error e -> fail e ) >|= fun (message_state, out) ->
+    let state = { ctx.state with message_state } in
+    let ctx = { ctx with state } in
+    (ctx, out, warn, msg)
+  | MSGSTATE_FINISHED ->
+    return (ctx, None, Some "received data while in finished state, ignoring", Some (Cstruct.to_string bytes))
 
 (* operations triggered by a user *)
 let start_otr ctx =
@@ -216,7 +284,7 @@ let handle (ctx : session) bytes =
     (reset_session ctx, out, Some ("Error: " ^ message), None, text)
   | `Data (bytes, message) ->
     ( match handle_data ctx bytes with
-      | Ok (ctx, out, warn, enc) -> (ctx, wrap_b64string out, warn, enc, message)
+      | Ok (ctx, out, warn, enc) -> (ctx, out, warn, enc, message)
       | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
   | `String message ->
     let ctx, warn = handle_cleartext ctx in
