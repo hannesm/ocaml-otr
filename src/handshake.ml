@@ -144,15 +144,7 @@ let decrypt keys version instances bytes =
       guard (stop >= 0) "invalid data" >>= fun () ->
       let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
       guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >|= fun () ->
-      let dec =
-        let ctrcs =
-          let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
-          Cstruct.BE.set_uint64 buf 0 ctr' ;
-          buf
-        in
-        let dec = Crypto.crypt ~key:recvaes ~ctr:ctrcs encdata in
-        Cstruct.to_string dec
-      in
+      let dec = Cstruct.to_string (Crypto.crypt ~key:recvaes ~ctr:ctr' encdata) in
       let txt, data =
         try
           let stop = String.index dec '\000' in
@@ -179,12 +171,7 @@ let encrypt version instances keys ?(reveal = Cstruct.create 0) data =
     | None -> fail "invalid DH public key" ) >|= fun shared ->
   let sendaes, sendmac, _, _ = Crypto.data_keys shared high in
   let our_ctr = Int64.succ keys.our_ctr in
-  let ctr =
-    let buf = Nocrypto.Uncommon.Cs.create_with 16 0 in
-    Cstruct.BE.set_uint64 buf 0 our_ctr ;
-    buf
-  in
-  let enc = Crypto.crypt ~key:sendaes ~ctr (Cstruct.of_string data) in
+  let enc = Crypto.crypt ~key:sendaes ~ctr:our_ctr (Cstruct.of_string data) in
   let our_id = Int32.pred keys.our_keyid in
   let data = Builder.data version instances our_id keys.their_keyid (snd keys.dh) our_ctr enc in
   let mac = Crypto.sha1mac ~key:sendmac data in

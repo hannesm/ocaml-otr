@@ -12,8 +12,7 @@ end
 val derive_keys : Cstruct.t -> State.keyblock
 val data_keys : Cstruct.t -> bool -> (Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t)
 
-val ctr0 : unit -> Cstruct.t
-val crypt : key:Cstruct.t -> ctr:Cstruct.t -> Cstruct.t -> Cstruct.t
+val crypt : key:Cstruct.t -> ctr:int64 -> Cstruct.t -> Cstruct.t
 
 val gen_symmetric_key : unit -> Cstruct.t
 

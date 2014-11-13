@@ -66,9 +66,12 @@ let data_keys data high =
 module Counter = Cipher_block.Counters.Inc_BE
 module AES_CTR = Cipher_block.AES.CTR (Counter)
 
-let ctr0 _ = Uncommon.Cs.create_with 16 0
-
 let crypt ~key ~ctr msg =
+  let ctr =
+    let buf = Uncommon.Cs.create_with 16 0 in
+    Cstruct.BE.set_uint64 buf 0 ctr ;
+    buf
+  in
   AES_CTR.encrypt ~key:(AES_CTR.of_secret key) ~ctr msg
 
 let gen_symmetric_key () =
