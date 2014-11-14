@@ -190,7 +190,7 @@ let handle_data ctx bytes =
   | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
       | Ake.Ok (ctx, out) -> return (ctx, wrap_b64string out, None, None)
-      | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered" ^ x)
+      | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
       | Ake.Error Ake.VersionMismatch ->
         Printf.printf "packet with wrong version received, ignoring\n" ;
         return (ctx, None, Some "wrong version in packet", None)
