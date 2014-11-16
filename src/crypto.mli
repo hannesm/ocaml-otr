@@ -5,6 +5,7 @@ module OtrDsa : sig
   val to_wire : ?notag:unit -> Nocrypto.Dsa.pub -> Cstruct.t
   val priv_to_wire : Nocrypto.Dsa.priv -> Cstruct.t
   val fingerprint : Nocrypto.Dsa.pub -> Cstruct.t
+  val priv_fingerprint : Nocrypto.Dsa.priv -> Cstruct.t
   val signature : key:Nocrypto.Dsa.priv -> Cstruct.t -> Cstruct.t
   val verify : key:Nocrypto.Dsa.pub -> Cstruct.t * Cstruct.t -> Cstruct.t -> bool
 end

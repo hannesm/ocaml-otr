@@ -33,6 +33,9 @@ module OtrDsa = struct
     (* only handling key type 0000, DSA *)
     Hash.digest `SHA1 (to_wire ~notag:() k)
 
+  let priv_fingerprint k =
+    fingerprint (Nocrypto.Dsa.pub_of_priv k)
+
   let signature ~key data =
     let r, s = sign ~key (massage ~key:(pub_of_priv key) data) in
     r <+> s
