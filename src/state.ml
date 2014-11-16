@@ -44,7 +44,21 @@ type policy = [
   | `ERROR_START_AKE
 ] with sexp
 
+let policy_to_string = function
+  | `REQUIRE_ENCRYPTION -> "require encryption"
+  | `SEND_WHITESPACE_TAG -> "send whitespace tag"
+  | `WHITESPACE_START_AKE -> "whitespace starts ake"
+  | `ERROR_START_AKE -> "error starts ake"
+
+let policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ]
+
 type version = [ `V2 | `V3 ] with sexp
+
+let version_to_string = function
+  | `V2 -> "Version 2"
+  | `V3 -> "Version 3"
+
+let versions = [ `V2 ; `V3 ]
 
 type config = {
   policies : policy list ;
