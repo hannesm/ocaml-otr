@@ -81,11 +81,21 @@ type session = {
   high : bool ;
 } with sexp
 
+let dsa0 =
+  let emp = Cstruct.create 0 in
+  Nocrypto.Dsa.priv ~p:emp ~q:emp ~gg:emp ~x:emp ~y:emp
+
+let default_config =
+  { policies = [ `REQUIRE_ENCRYPTION ; `WHITESPACE_START_AKE ] ;
+    versions = [ `V3 ; `V2 ] ;
+    dsa = dsa0 }
+
 let (<?>) ma b = match ma with None -> b | Some a -> a
 
 let empty_session ?policies ?versions ~dsa () =
-  let policies = policies <?> [] in
-  let versions = versions <?> [`V3 ; `V2] in
+  let def = default_config in
+  let policies = policies <?> def.policies in
+  let versions = versions <?> def.versions in
   let config = { policies ; versions ; dsa } in
   let state = { message_state = MSGSTATE_PLAINTEXT ; auth_state = AUTHSTATE_NONE } in
   { instances = None ; version = `V3 ; state ; config ; their_dsa = None ; ssid = Cstruct.create 0 ; high = false }
