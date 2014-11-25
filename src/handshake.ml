@@ -189,13 +189,11 @@ let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
-      | Ake.Ok (ctx, out) -> return (ctx, wrap_b64string out, None, None)
+      | Ake.Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn, None)
       | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
       | Ake.Error Ake.VersionMismatch ->
-        Printf.printf "packet with wrong version received, ignoring\n" ;
         return (ctx, None, Some "wrong version in packet", None)
       | Ake.Error Ake.InstanceMismatch ->
-        Printf.printf "packet with wrong instances received, ignoring\n" ;
         return (ctx, None, Some "wrong instances in packet", None) )
   | MSGSTATE_ENCRYPTED keys ->
     decrypt keys ctx.version ctx.instances bytes >>= fun (msg, data, warn, keys) ->

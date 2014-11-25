@@ -182,44 +182,45 @@ let handle_auth ctx bytes =
   match typ, ctx.state.auth_state with
   | DH_COMMIT, AUTHSTATE_NONE ->
     let ctx, dh_key = dh_key_await_revealsig ctx buf in
-    return (ctx, Some dh_key)
+    return (ctx, Some dh_key, None)
   | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
-    handle_commit_await_key ctx dh_c h buf
+    handle_commit_await_key ctx dh_c h buf >|= fun (ctx, out) ->
+    (ctx, out, None)
   | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
     let auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) in
     let state = { ctx.state with auth_state } in
     let dh_key = Builder.dh_key ctx.version ctx.instances gx in
-    return ({ ctx with state }, Some dh_key)
+    return ({ ctx with state }, Some dh_key, None)
   | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
     (* send dh_key, go to AWAITING_REVEALSIG *)
     let ctx, dh_key = dh_key_await_revealsig ctx buf in
-    return (ctx, Some dh_key)
+    return (ctx, Some dh_key, None)
 
   | DH_KEY, AUTHSTATE_AWAITING_DHKEY (_, _, dh_params, r) ->
     (* reveal_sig -> AUTHSTATE_AWAITING_SIG *)
     check_key_reveal_sig ctx dh_params r buf >|= fun (ctx, reveal) ->
-    (ctx, Some reveal)
+    (ctx, Some reveal, None)
 
   | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
     (* same dh_key? -> retransmit REVEAL_SIG *)
     safe_parse Parser.parse_gy buf >|= fun gy' ->
     if Nocrypto.Uncommon.Cs.equal gy gy' then
-      (ctx, Some reveal_sig)
+      (ctx, Some reveal_sig, None)
     else
-      (ctx, None)
+      (ctx, None, None)
 
   | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
     (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
     check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out) ->
-    (ctx, Some out)
+    (ctx, Some out, None)
 
   | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
     (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
     check_sig ctx keys dh_params gy buf >|= fun ctx ->
-    (ctx, None)
+    (ctx, None, None)
 
   | DATA, _ ->
-    Printf.printf "received data message while in plaintext mode, ignoring\n" ;
-    return (ctx, None)
+    let warn = Some "received data message while in plaintext mode, ignoring" in
+    return (ctx, None, warn)
 
-  | _ -> (* ignore this message *) return (ctx, None)
+  | _ -> (* ignore this message *) return (ctx, None, Some "ignored message")

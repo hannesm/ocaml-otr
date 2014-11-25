@@ -72,7 +72,7 @@ let otr_mark, otr_err_mark, otr_query_mark, tag_prefix =
   (re "?OTR:",
    re "?OTR Error:",
    re "?OTR",
-   re " \t  \t\t\t\t \t \t \t  ")
+   re " \t  \t\t\t\t \t \t \t ")
 
 open Sexplib.Conv
 
@@ -101,7 +101,8 @@ let parse_plain_tag_exn data =
       let _, post = string_split data idx in
       (List.rev acc, post)
     else
-      match String.sub data idx 8 with
+      let str = String.sub data idx 8 in
+      match str with
       | "  \t\t  \t " -> find_mark (idx + 8) (`V2 :: acc)
       | "  \t\t  \t\t" -> find_mark (idx + 8) (`V3 :: acc)
       | _ -> find_mark (idx + 8) acc
@@ -126,7 +127,7 @@ let classify_input bytes =
           | Error _ -> `ParseError ("Malformed OTR query", bytes) )
       | Error _ -> match re_match tag_prefix bytes with
         | Ok (pre, data) ->
-          ( match parse_plain_tag data with
+          (match parse_plain_tag data with
             | Ok (versions, post) -> `PlainTag (versions, maybe_concat pre post)
             | Error _ -> `ParseError ("Malformed tag", bytes) )
         | Error _ -> `String bytes
