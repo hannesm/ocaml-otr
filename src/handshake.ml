@@ -256,9 +256,9 @@ let handle (ctx : session) bytes =
     ( match handle_whitespace_tag ctx versions with
       | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None, text)
       | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
-  | `Query (versions, text) ->
+  | `Query (versions, _) ->
     ( match handle_query ctx versions with
-      | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None, text)
+      | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None, None)
       | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
   | `Error (message, text) ->
     let out = handle_error ctx in
