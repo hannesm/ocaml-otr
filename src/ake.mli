@@ -1,6 +1,7 @@
 
 type error =
   | Unknown of string
+  | Unexpected
   | VersionMismatch
   | InstanceMismatch
 

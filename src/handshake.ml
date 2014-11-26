@@ -188,6 +188,10 @@ let handle_data ctx bytes =
   | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
       | Ake.Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn, None)
+      | Ake.Error Ake.Unexpected -> return (ctx,
+                                            Some "?OTR Error: ignoring unreadable message",
+                                            Some "received encrypted data while in plaintext mode",
+                                            None)
       | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
       | Ake.Error Ake.VersionMismatch ->
         return (ctx, None, Some "wrong version in packet", None)

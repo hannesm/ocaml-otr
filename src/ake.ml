@@ -4,6 +4,7 @@ open State
 (* Monadic control-flow core. *)
 type error =
   | Unknown of string
+  | Unexpected
   | VersionMismatch
   | InstanceMismatch
 
@@ -218,8 +219,6 @@ let handle_auth ctx bytes =
     check_sig ctx keys dh_params gy buf >|= fun ctx ->
     (ctx, None, None)
 
-  | DATA, _ ->
-    let warn = Some "received data message while in plaintext mode, ignoring" in
-    return (ctx, None, warn)
+  | DATA, _ -> fail Unexpected
 
   | _ -> (* ignore this message *) return (ctx, None, Some "ignored message")
