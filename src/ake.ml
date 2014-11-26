@@ -48,8 +48,7 @@ let mac_verify hmac signature pub gx gy keyid =
   and gympi = Builder.encode_data gy
   in
   let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pub ; Builder.encode_int keyid ] in
-  guard (Crypto.OtrDsa.verify ~key:pub signature mb) (Unknown "DSA verification failed") >|= fun () ->
-  Printf.printf "PUB their fingerprint" ; Cstruct.hexdump (Crypto.OtrDsa.fingerprint pub)
+  guard (Crypto.OtrDsa.verify ~key:pub signature mb) (Unknown "DSA verification failed")
 
 (* authentication handshake *)
 let dh_commit ctx their_versions =

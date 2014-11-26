@@ -152,8 +152,6 @@ let decrypt keys version instances bytes =
           String.(sub dec 0 stop, sub dec stop' (length dec - stop'))
         with _ -> (dec, "")
       in
-      Printf.printf "received txt %s and data" txt;
-      Cstruct.hexdump (Cstruct.of_string data) ;
       let maybe_s s = if String.length s = 0 then None else Some s in
       let txt = maybe_s txt
       and data = maybe_s data
