@@ -21,6 +21,7 @@ let commit ctx their_versions warn =
   | Ake.Error (Ake.Unknown e) -> fail e
   | Ake.Error Ake.VersionMismatch -> fail "couldn't agree on a version"
   | Ake.Error Ake.InstanceMismatch -> fail "wrong instances"
+  | Ake.Error Ake.Unexpected -> fail "unexpected message"
 
 let handle_whitespace_tag ctx their_versions =
   let warn = match ctx.state.message_state with
