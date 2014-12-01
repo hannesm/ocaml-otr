@@ -24,11 +24,11 @@ type encryption_keys = {
   their_ctr : int64 ;
 } with sexp
 
-type message_state =
-  | MSGSTATE_PLAINTEXT
-  | MSGSTATE_ENCRYPTED of encryption_keys
-  | MSGSTATE_FINISHED
-with sexp
+type message_state = [
+  | `MSGSTATE_PLAINTEXT
+  | `MSGSTATE_ENCRYPTED of encryption_keys
+  | `MSGSTATE_FINISHED
+] with sexp
 
 type auth_state =
   | AUTHSTATE_NONE
@@ -93,7 +93,7 @@ let default_config =
 let (<?>) ma b = match ma with None -> b | Some a -> a
 
 let new_session config () =
-  let state = { message_state = MSGSTATE_PLAINTEXT ; auth_state = AUTHSTATE_NONE } in
+  let state = { message_state = `MSGSTATE_PLAINTEXT ; auth_state = AUTHSTATE_NONE } in
   { instances = None ; version = `V3 ; state ; config ; their_dsa = None ; ssid = Cstruct.create 0 ; high = false }
 
 let empty_session ?policies ?versions ~dsa () =

@@ -8,10 +8,10 @@ include Control.Or_error_make (struct type err = error end)
 
 let handle_cleartext ctx =
   let warn = match ctx.state.message_state with
-    | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
+    | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
       Some "unencrypted data"
-    | MSGSTATE_PLAINTEXT -> None
-    | MSGSTATE_ENCRYPTED _ | MSGSTATE_FINISHED -> Some "unencrypted data"
+    | `MSGSTATE_PLAINTEXT -> None
+    | `MSGSTATE_ENCRYPTED _ | `MSGSTATE_FINISHED -> Some "unencrypted data"
   in
   (ctx, warn)
 
@@ -25,10 +25,10 @@ let commit ctx their_versions warn =
 
 let handle_whitespace_tag ctx their_versions =
   let warn = match ctx.state.message_state with
-    | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
+    | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
       Some "unencrypted data"
-    | MSGSTATE_PLAINTEXT -> None
-    | MSGSTATE_ENCRYPTED _ | MSGSTATE_FINISHED -> Some "unencrypted data"
+    | `MSGSTATE_PLAINTEXT -> None
+    | `MSGSTATE_ENCRYPTED _ | `MSGSTATE_FINISHED -> Some "unencrypted data"
   in
   if policy ctx `WHITESPACE_START_AKE then
     commit ctx their_versions warn
@@ -88,7 +88,7 @@ let handle_tlv state typ buf =
   let open Packet in
   match typ with
   | Some PADDING -> (state, None, None)
-  | Some DISCONNECTED -> ({ state with message_state = MSGSTATE_FINISHED },
+  | Some DISCONNECTED -> ({ state with message_state = `MSGSTATE_FINISHED },
                           None,
                           Some "OTR connection lost")
   | Some _ -> (state, None, Some "not handling this tlv")
@@ -186,7 +186,7 @@ let wrap_b64string = function
 
 let handle_data ctx bytes =
   match ctx.state.message_state with
-  | MSGSTATE_PLAINTEXT ->
+  | `MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
       | Ake.Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn, None)
       | Ake.Error Ake.Unexpected -> return (ctx,
@@ -198,19 +198,19 @@ let handle_data ctx bytes =
         return (ctx, None, Some "wrong version in packet", None)
       | Ake.Error Ake.InstanceMismatch ->
         return (ctx, None, Some "wrong instances in packet", None) )
-  | MSGSTATE_ENCRYPTED keys ->
+  | `MSGSTATE_ENCRYPTED keys ->
     decrypt keys ctx.version ctx.instances bytes >>= fun (msg, data, warn, keys) ->
-    let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
+    let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED keys } in
     handle_tlvs state data >>= fun (state, out, warn) ->
     ( match out with
       | None -> return (state, None)
       | Some x -> match encrypt ctx.version ctx.instances keys x with
-        | Ok (keys, out) -> return ({ state with message_state = MSGSTATE_ENCRYPTED keys },
+        | Ok (keys, out) -> return ({ state with message_state = `MSGSTATE_ENCRYPTED keys },
                                     wrap_b64string (Some out))
         | Error e -> fail e ) >|= fun (state, out) ->
     let ctx = { ctx with state } in
     (ctx, out, warn, msg)
-  | MSGSTATE_FINISHED ->
+  | `MSGSTATE_FINISHED ->
     return (ctx, None, Some "received data while in finished state, ignoring", Some (Cstruct.to_string bytes))
 
 (* operations triggered by a user *)
@@ -219,35 +219,35 @@ let start_otr ctx =
 
 let send_otr ctx data =
   match ctx.state.message_state with
-  | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
+  | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
     (ctx,
      Some (Builder.query_message ctx.config.versions),
      Some "didn't send message, there was no encrypted connection")
-  | MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
+  | `MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
     (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
     (ctx, Some (Builder.tag ctx.config.versions ^ data), None)
-  | MSGSTATE_PLAINTEXT -> (ctx, Some data, None)
-  | MSGSTATE_ENCRYPTED keys ->
+  | `MSGSTATE_PLAINTEXT -> (ctx, Some data, None)
+  | `MSGSTATE_ENCRYPTED keys ->
     ( match encrypt ctx.version ctx.instances keys data with
       | Ok (keys, out) ->
-        let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED keys } in
+        let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED keys } in
         let out = wrap_b64string (Some out) in
         ({ ctx with state }, out, None)
       | Error e -> (ctx, None, Some ("otr error: " ^ e)) )
-  | MSGSTATE_FINISHED ->
+  | `MSGSTATE_FINISHED ->
      (ctx, None, Some "message couldn't be sent since OTR session is finished.")
 
 let end_otr ctx =
-  let state = { ctx.state with message_state = MSGSTATE_PLAINTEXT } in
+  let state = { ctx.state with message_state = `MSGSTATE_PLAINTEXT } in
   match ctx.state.message_state with
-  | MSGSTATE_PLAINTEXT -> (ctx, None, None)
-  | MSGSTATE_ENCRYPTED keys ->
+  | `MSGSTATE_PLAINTEXT -> (ctx, None, None)
+  | `MSGSTATE_ENCRYPTED keys ->
     (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
     let data = Cstruct.to_string (Builder.tlv 1) in
     ( match encrypt ctx.version ctx.instances keys ("\000" ^ data) with
       | Ok (_keys, out) -> ({ ctx with state }, wrap_b64string (Some out), None)
       | Error e -> (reset_session ctx, None, None) )
-  | MSGSTATE_FINISHED ->
+  | `MSGSTATE_FINISHED ->
      ({ ctx with state }, None, None)
 
 (* session -> string -> (session * to_send * user_msg * data_received * cleartext_received) *)
