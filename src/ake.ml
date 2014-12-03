@@ -212,12 +212,12 @@ let handle_auth ctx bytes =
   | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
     (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
     check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out) ->
-    (ctx, Some out, None)
+    (ctx, Some out, Some ("OTR connection established"))
 
   | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
     (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
     check_sig ctx keys dh_params gy buf >|= fun ctx ->
-    (ctx, None, None)
+    (ctx, None, Some ("OTR connection established"))
 
   | DATA, _ -> fail Unexpected
 
