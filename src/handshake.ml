@@ -6,37 +6,32 @@ let policy ctx p = List.mem p ctx.config.policies
 type error = string
 include Control.Or_error_make (struct type err = error end)
 
-let handle_cleartext ctx =
-  let warn = match ctx.state.message_state with
-    | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
-      Some "unencrypted data"
+let handle_cleartext ctx data =
+  let pre = match ctx.state.message_state with
+    | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION -> Some "received unencrypted data"
     | `MSGSTATE_PLAINTEXT -> None
-    | `MSGSTATE_ENCRYPTED _ | `MSGSTATE_FINISHED -> Some "unencrypted data"
+    | `MSGSTATE_ENCRYPTED _ | `MSGSTATE_FINISHED -> Some "received unencrypted data"
   in
-  (ctx, warn)
+  match pre, data with
+  | None, data -> data
+  | Some x, None -> Some x
+  | Some x, Some y -> Some (x ^ ": " ^ y)
 
-let commit ctx their_versions warn =
+let commit ctx their_versions =
   match Ake.dh_commit ctx their_versions with
-  | Ake.Ok (ctx, out) -> return (ctx, Some out, warn)
+  | Ake.Ok (ctx, out) -> return (ctx, Some out)
   | Ake.Error (Ake.Unknown e) -> fail e
   | Ake.Error Ake.VersionMismatch -> fail "couldn't agree on a version"
   | Ake.Error Ake.InstanceMismatch -> fail "wrong instances"
   | Ake.Error Ake.Unexpected -> fail "unexpected message"
 
-let handle_whitespace_tag ctx their_versions =
-  let warn = match ctx.state.message_state with
-    | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
-      Some "unencrypted data"
-    | `MSGSTATE_PLAINTEXT -> None
-    | `MSGSTATE_ENCRYPTED _ | `MSGSTATE_FINISHED -> Some "unencrypted data"
-  in
-  if policy ctx `WHITESPACE_START_AKE then
-    commit ctx their_versions warn
-  else
-    return (ctx, None, warn)
-
-let handle_query ctx their_versions =
-  commit ctx their_versions None
+let handle_whitespace_tag ctx their_versions data =
+  let warn = handle_cleartext ctx data in
+  (if policy ctx `WHITESPACE_START_AKE then
+     commit ctx their_versions
+   else
+     return (ctx, None) ) >|= fun (ctx, out) ->
+  (ctx, out, warn)
 
 let handle_error ctx =
   if policy ctx `ERROR_START_AKE then
@@ -225,52 +220,65 @@ let send_otr ctx data =
      Some "didn't send message, there was no encrypted connection")
   | `MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
     (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
-    (ctx, Some (Builder.tag ctx.config.versions ^ data), None)
-  | `MSGSTATE_PLAINTEXT -> (ctx, Some data, None)
+    (ctx, Some (Builder.tag ctx.config.versions ^ data), Some data)
+  | `MSGSTATE_PLAINTEXT -> (ctx, Some data, Some data)
   | `MSGSTATE_ENCRYPTED keys ->
     ( match encrypt ctx.version ctx.instances keys data with
       | Ok (keys, out) ->
         let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED keys } in
         let out = wrap_b64string (Some out) in
-        ({ ctx with state }, out, None)
-      | Error e -> (ctx, None, Some ("otr error: " ^ e)) )
+        ({ ctx with state }, out, Some data)
+      | Error e -> (ctx, None, Some ("Otr error: " ^ e)) )
   | `MSGSTATE_FINISHED ->
-     (ctx, None, Some "message couldn't be sent since OTR session is finished.")
+     (ctx, None, Some "message couldn't be sent since OTR session is finished; please restart.")
 
 let end_otr ctx =
   let state = { ctx.state with message_state = `MSGSTATE_PLAINTEXT } in
   match ctx.state.message_state with
-  | `MSGSTATE_PLAINTEXT -> (ctx, None, None)
+  | `MSGSTATE_PLAINTEXT -> (ctx, None)
   | `MSGSTATE_ENCRYPTED keys ->
     (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
     let data = Cstruct.to_string (Builder.tlv 1) in
     ( match encrypt ctx.version ctx.instances keys ("\000" ^ data) with
-      | Ok (_keys, out) -> ({ ctx with state }, wrap_b64string (Some out), None)
-      | Error e -> (reset_session ctx, None, None) )
+      | Ok (_keys, out) -> ({ ctx with state }, wrap_b64string (Some out))
+      | Error e -> (reset_session ctx, None) )
   | `MSGSTATE_FINISHED ->
-     ({ ctx with state }, None, None)
+     ({ ctx with state }, None)
 
-(* session -> string -> (session * to_send * user_msg * data_received * cleartext_received) *)
+(* session -> string -> (session * to_send * user_msg * data_received) *)
 let handle (ctx : session) bytes =
   match Parser.classify_input bytes with
   | `PlainTag (versions, text) ->
-    ( match handle_whitespace_tag ctx versions with
-      | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None, text)
-      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
+    ( match handle_whitespace_tag ctx versions text with
+      | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None)
+      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None) )
   | `Query (versions, _) ->
-    ( match handle_query ctx versions with
-      | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None, None)
-      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
+    ( match commit ctx versions with
+      | Ok (ctx, out) -> (ctx, wrap_b64string out, None, None)
+      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None) )
   | `Error (message, text) ->
     let out = handle_error ctx in
-    (reset_session ctx, out, Some ("Error: " ^ message), None, text)
+    let pre = match text with | None -> "" | Some x -> "Unencrypted: " ^ x in
+    (reset_session ctx, out, Some (pre ^ "Error: " ^ message), None)
   | `Data (bytes, message) ->
     ( match handle_data ctx bytes with
-      | Ok (ctx, out, warn, enc) -> (ctx, out, warn, enc, message)
-      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None, None) )
+      | Ok (ctx, out, warn, enc) ->
+        let user = match warn, message with
+          | Some x, None -> Some x
+          | None, Some x -> Some x
+          | Some x, Some y -> Some (x ^ y)
+          | None, None -> None
+        in
+        (ctx, out, user, enc)
+      | Error e ->
+        let user = match message with
+          | Some x -> Some (x ^ "Error: " ^ e)
+          | None -> Some ("Error: " ^ e)
+        in
+        (reset_session ctx, Some ("?OTR Error: " ^ e), user, None) )
   | `String message ->
-    let ctx, warn = handle_cleartext ctx in
-    (ctx, None, warn, None, Some message)
+    let warn = handle_cleartext ctx (Some message) in
+    (ctx, None, warn, None)
   | `ParseError (err, message) ->
-    let ctx, warn = handle_cleartext ctx in
-    (reset_session ctx, Some ("?OTR Error: " ^ err), warn, None, Some message)
+    let warn = handle_cleartext ctx (Some message) in
+    (reset_session ctx, Some ("?OTR Error: " ^ err), warn, None)
