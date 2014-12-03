@@ -206,7 +206,7 @@ let handle_data ctx bytes =
     let ctx = { ctx with state } in
     (ctx, out, warn, msg)
   | `MSGSTATE_FINISHED ->
-    return (ctx, None, Some "received data while in finished state, ignoring", Some (Cstruct.to_string bytes))
+    return (ctx, None, Some "received data while in finished state, ignoring", None)
 
 (* operations triggered by a user *)
 let start_otr ctx =
