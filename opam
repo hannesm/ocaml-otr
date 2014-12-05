@@ -4,8 +4,9 @@ version:      "0.1.0"
 homepage:     "https://github.com/hannesm/ocaml-otr"
 dev-repo:     "https://github.com/hannesm/ocaml-otr.git"
 bug-reports:  "https://github.com/hannesm/ocaml-otr/issues"
-author: ["Hannes Mehnert <hannes@mehnert.org>"]
-maintainer: ["Hannes Mehnert <hannes@mehnert.org>"]
+author:       ["Hannes Mehnert <hannes@mehnert.org>"]
+maintainer:   ["Hannes Mehnert <hannes@mehnert.org>"]
+license:      "BSD2"
 
 build: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
