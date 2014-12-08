@@ -2,6 +2,7 @@
 open Sexplib.Conv
 
 type ret = [ `Warning of string
+           | `Received_error of string
            | `Received of string
            | `Established_encrypted_session
            | `Received_encrypted of string ]

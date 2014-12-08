@@ -252,7 +252,8 @@ let handle (ctx : session) bytes =
                     [`Warning ("OTR Error: " ^ e)] ) )
   | `Error (message, text) ->
     let out = handle_error ctx in
-    (reset_session ctx, out, [`Warning ("Error: " ^ message)] @ recv text)
+    (reset_session ctx, out,
+     [`Received_error ("Received OTR Error: " ^ message)] @ recv text)
   | `Data (bytes, message) ->
     ( match handle_data ctx bytes with
       | Ok (ctx, out, warn) ->
