@@ -210,7 +210,7 @@ let handle_data ctx bytes =
 
 (* operations triggered by a user *)
 let start_otr ctx =
-  (ctx, Builder.query_message ctx.config.versions)
+  (reset_session ctx, Builder.query_message ctx.config.versions)
 
 let send_otr ctx data =
   match ctx.state.message_state with
@@ -233,17 +233,16 @@ let send_otr ctx data =
      (ctx, None, `Warning ("didn't sent message, OTR session is finished: " ^ data))
 
 let end_otr ctx =
-  let state = { ctx.state with message_state = `MSGSTATE_PLAINTEXT } in
   match ctx.state.message_state with
   | `MSGSTATE_PLAINTEXT -> (ctx, None)
   | `MSGSTATE_ENCRYPTED keys ->
     (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
     let data = Cstruct.to_string (Builder.tlv 1) in
     ( match encrypt ctx.version ctx.instances keys ("\000" ^ data) with
-      | Ok (_keys, out) -> ({ ctx with state }, wrap_b64string (Some out))
+      | Ok (_keys, out) -> (reset_session ctx, wrap_b64string (Some out))
       | Error e -> (reset_session ctx, None) )
   | `MSGSTATE_FINISHED ->
-     ({ ctx with state }, None)
+     (reset_session ctx, None)
 
 (* session -> string -> (session * to_send * user_msg * data_received) *)
 let handle (ctx : session) bytes =
