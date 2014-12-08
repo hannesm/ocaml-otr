@@ -217,20 +217,20 @@ let send_otr ctx data =
   | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
     (ctx,
      Some (Builder.query_message ctx.config.versions),
-     Some "didn't send message, there was no encrypted connection")
+     `Warning ("didn't sent message, there was no encrypted connection: " ^ data))
   | `MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
     (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
-    (ctx, Some (Builder.tag ctx.config.versions ^ data), Some data)
-  | `MSGSTATE_PLAINTEXT -> (ctx, Some data, Some data)
+    (ctx, Some (Builder.tag ctx.config.versions ^ data), `Sent data)
+  | `MSGSTATE_PLAINTEXT -> (ctx, Some data, `Sent data)
   | `MSGSTATE_ENCRYPTED keys ->
     ( match encrypt ctx.version ctx.instances keys data with
       | Ok (keys, out) ->
         let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED keys } in
         let out = wrap_b64string (Some out) in
-        ({ ctx with state }, out, Some data)
-      | Error e -> (ctx, None, Some ("Otr error: " ^ e)) )
+        ({ ctx with state }, out, `Sent_encrypted data)
+      | Error e -> (ctx, None, `Warning ("Otr error: " ^ e ^ " while trying to encrypt: " ^ data) ) )
   | `MSGSTATE_FINISHED ->
-     (ctx, None, Some "message couldn't be sent since OTR session is finished; please restart.")
+     (ctx, None, `Warning ("didn't sent message, OTR session is finished: " ^ data))
 
 let end_otr ctx =
   let state = { ctx.state with message_state = `MSGSTATE_PLAINTEXT } in
