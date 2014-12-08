@@ -6,7 +6,7 @@ include Control.Or_error with type err = error
 
 type ret = [
   | `Data of Cstruct.t * string option
-  | `ParseError of string * string
+  | `ParseError of string
   | `Error of string * string option
   | `PlainTag of State.version list * string option
   | `Query of State.version list * string option

@@ -1,6 +1,11 @@
 
 open Sexplib.Conv
 
+type ret = [ `Warning of string
+           | `Received of string
+           | `Established_encrypted_session
+           | `Received_encrypted of string ]
+
 type keyblock = {
   ssid : Cstruct.t ;
   c    : Cstruct.t ;

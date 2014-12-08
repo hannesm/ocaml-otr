@@ -6,16 +6,11 @@ let policy ctx p = List.mem p ctx.config.policies
 type error = string
 include Control.Or_error_make (struct type err = error end)
 
-let handle_cleartext ctx data =
-  let pre = match ctx.state.message_state with
-    | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION -> Some "received unencrypted data"
-    | `MSGSTATE_PLAINTEXT -> None
-    | `MSGSTATE_ENCRYPTED _ | `MSGSTATE_FINISHED -> Some "received unencrypted data"
-  in
-  match pre, data with
-  | None, data -> data
-  | Some x, None -> Some x
-  | Some x, Some y -> Some (x ^ ": " ^ y)
+let handle_cleartext ctx =
+  match ctx.state.message_state with
+  | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION -> [`Warning "received unencrypted data"]
+  | `MSGSTATE_PLAINTEXT -> []
+  | `MSGSTATE_ENCRYPTED _ | `MSGSTATE_FINISHED -> [`Warning "received unencrypted data"]
 
 let commit ctx their_versions =
   match Ake.dh_commit ctx their_versions with
@@ -25,8 +20,8 @@ let commit ctx their_versions =
   | Ake.Error Ake.InstanceMismatch -> fail "wrong instances"
   | Ake.Error Ake.Unexpected -> fail "unexpected message"
 
-let handle_whitespace_tag ctx their_versions data =
-  let warn = handle_cleartext ctx data in
+let handle_whitespace_tag ctx their_versions =
+  let warn = handle_cleartext ctx in
   (if policy ctx `WHITESPACE_START_AKE then
      commit ctx their_versions
    else
@@ -72,22 +67,15 @@ let update_keys keys send recv dh_y ctr =
   else
     keys
 
-let merge a b =
-  match a, b with
-  | None, None -> None
-  | None, Some a -> Some a
-  | Some a, None -> Some a
-  | Some a, Some b -> Some (a ^ b)
-
 let handle_tlv state typ buf =
   let open Packet in
   match typ with
-  | Some PADDING -> (state, None, None)
+  | Some PADDING -> (state, None, [])
   | Some DISCONNECTED -> ({ state with message_state = `MSGSTATE_FINISHED },
                           None,
-                          Some "OTR connection lost")
-  | Some _ -> (state, None, Some "not handling this tlv")
-  | None -> (state, None, Some "unknown tlv type")
+                          [`Warning "OTR connection lost"])
+  | Some _ -> (state, None, [`Warning "not handling this tlv"])
+  | None -> (state, None, [`Warning "unknown tlv type"])
 
 let rec filter_map ?(f = fun x -> x) = function
   | []    -> []
@@ -97,7 +85,7 @@ let rec filter_map ?(f = fun x -> x) = function
       | Some x' -> x' :: filter_map ~f xs
 
 let handle_tlvs state = function
-  | None -> return (state, None, None)
+  | None -> return (state, None, [])
   | Some data ->
     let rec process_data state data out warn =
       match Cstruct.len data with
@@ -105,10 +93,10 @@ let handle_tlvs state = function
       | _ -> match Parser.parse_tlv data with
         | Parser.Ok (typ, buf, rest) ->
           let state, out', warn' = handle_tlv state typ buf in
-          process_data state rest (out' :: out) (merge warn warn')
-        | Parser.Error _ -> (state, out, Some "ignoring malformed TLV")
+          process_data state rest (out' :: out) (warn @ warn')
+        | Parser.Error _ -> (state, out, [`Warning "ignoring malformed TLV"])
     in
-    let state, out, warn = process_data state (Cstruct.of_string data) [] None in
+    let state, out, warn = process_data state (Cstruct.of_string data) [] [] in
     let out = match filter_map out with
       | [] -> None
       | xs -> Some (Cstruct.to_string (Nocrypto.Uncommon.Cs.concat xs))
@@ -120,16 +108,16 @@ let decrypt keys version instances bytes =
   | Parser.Ok (version', instances', flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
     select_dh keys s_keyid r_keyid >>= fun ((dh_secret, gx), gy, ctr) ->
     if version <> version' then
-      return (None, None, Some "ignoring message with invalid version", keys)
+      return (keys, None, [`Warning "ignoring message with invalid version"])
     else if
       match version, instances, instances' with
       | `V3, Some (mya, myb), Some (youra, yourb) when (mya = youra) && (myb = yourb) -> false
       | `V2, _, _ -> false
       | _ -> true
     then
-      return (None, None, Some "ignoring message with invalid instances", keys)
+      return (keys, None, [`Warning "ignoring message with invalid instances"])
     else if ctr' <= ctr then
-      return (None, None, Some "ignoring message with invalid counter", keys)
+      return (keys, None, [`Warning "ignoring message with invalid counter"])
     else
       let high = Crypto.mpi_gt gx gy in
       ( match Crypto.dh_shared dh_secret gy with
@@ -148,12 +136,10 @@ let decrypt keys version instances bytes =
           String.(sub dec 0 stop, sub dec stop' (length dec - stop'))
         with _ -> (dec, "")
       in
-      let maybe_s s = if String.length s = 0 then None else Some s in
-      let txt = maybe_s txt
-      and data = maybe_s data
-      in
+      let data = if data = "" then None else Some data in
+      let ret = (if txt = "" then [] else [`Received_encrypted txt]) in
       let keys = update_keys keys s_keyid r_keyid dh_y ctr' in
-      (txt, data, None, keys)
+      (keys, data, ret)
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
@@ -183,30 +169,31 @@ let handle_data ctx bytes =
   match ctx.state.message_state with
   | `MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
-      | Ake.Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn, None)
-      | Ake.Error Ake.Unexpected -> return (ctx,
-                                            Some "?OTR Error: ignoring unreadable message",
-                                            Some "received encrypted data while in plaintext mode",
-                                            None)
+      | Ake.Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn)
+      | Ake.Error Ake.Unexpected ->
+        return (ctx,
+                Some "?OTR Error: ignoring unreadable message",
+                [`Warning "received encrypted data while in plaintext mode, ignoring unreadable message"])
       | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
       | Ake.Error Ake.VersionMismatch ->
-        return (ctx, None, Some "wrong version in packet", None)
+        return (ctx, None, [`Warning "wrong version in message"])
       | Ake.Error Ake.InstanceMismatch ->
-        return (ctx, None, Some "wrong instances in packet", None) )
+        return (ctx, None, [`Warning "wrong instances in message"]) )
   | `MSGSTATE_ENCRYPTED keys ->
-    decrypt keys ctx.version ctx.instances bytes >>= fun (msg, data, warn, keys) ->
+    decrypt keys ctx.version ctx.instances bytes >>= fun (keys, data, ret) ->
     let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED keys } in
     handle_tlvs state data >>= fun (state, out, warn) ->
     ( match out with
       | None -> return (state, None)
       | Some x -> match encrypt ctx.version ctx.instances keys x with
-        | Ok (keys, out) -> return ({ state with message_state = `MSGSTATE_ENCRYPTED keys },
-                                    wrap_b64string (Some out))
+        | Ok (keys, out) ->
+          return ({ state with message_state = `MSGSTATE_ENCRYPTED keys },
+                  wrap_b64string (Some out))
         | Error e -> fail e ) >|= fun (state, out) ->
     let ctx = { ctx with state } in
-    (ctx, out, warn, msg)
+    (ctx, out, ret @ warn)
   | `MSGSTATE_FINISHED ->
-    return (ctx, None, Some "received data while in finished state, ignoring", None)
+    return (ctx, None, [`Warning "received data while in finished state, ignoring"])
 
 (* operations triggered by a user *)
 let start_otr ctx =
@@ -244,40 +231,40 @@ let end_otr ctx =
   | `MSGSTATE_FINISHED ->
      (reset_session ctx, None)
 
-(* session -> string -> (session * to_send * user_msg * data_received) *)
+let recv text = match text with None -> [] | Some x -> [ `Received x ]
+
+(* session -> string -> (session * to_send * ret) *)
 let handle (ctx : session) bytes =
   match Parser.classify_input bytes with
   | `PlainTag (versions, text) ->
-    ( match handle_whitespace_tag ctx versions text with
-      | Ok (ctx, out, warn) -> (ctx, wrap_b64string out, warn, None)
-      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None) )
+    ( match handle_whitespace_tag ctx versions with
+      | Ok (ctx, out, warn) ->
+        (ctx, wrap_b64string out, warn @ recv text)
+      | Error e ->
+        (reset_session ctx,
+         Some ("?OTR Error: " ^ e),
+         [`Warning ("OTR Error: " ^ e)] @ recv text) )
   | `Query (versions, _) ->
     ( match commit ctx versions with
-      | Ok (ctx, out) -> (ctx, wrap_b64string out, None, None)
-      | Error e -> (reset_session ctx, Some ("?OTR Error: " ^ e), Some e, None) )
+      | Ok (ctx, out) -> (ctx, wrap_b64string out, [])
+      | Error e -> (reset_session ctx,
+                    Some ("?OTR Error: " ^ e),
+                    [`Warning ("OTR Error: " ^ e)] ) )
   | `Error (message, text) ->
     let out = handle_error ctx in
-    let pre = match text with | None -> "" | Some x -> "Unencrypted: " ^ x in
-    (reset_session ctx, out, Some (pre ^ "Error: " ^ message), None)
+    (reset_session ctx, out, [`Warning ("Error: " ^ message)] @ recv text)
   | `Data (bytes, message) ->
     ( match handle_data ctx bytes with
-      | Ok (ctx, out, warn, enc) ->
-        let user = match warn, message with
-          | Some x, None -> Some x
-          | None, Some x -> Some x
-          | Some x, Some y -> Some (x ^ y)
-          | None, None -> None
-        in
-        (ctx, out, user, enc)
+      | Ok (ctx, out, warn) ->
+        (ctx, out, warn @ recv message)
       | Error e ->
-        let user = match message with
-          | Some x -> Some (x ^ "Error: " ^ e)
-          | None -> Some ("Error: " ^ e)
-        in
-        (reset_session ctx, Some ("?OTR Error: " ^ e), user, None) )
+        (reset_session ctx,
+         Some ("?OTR Error: " ^ e),
+         [ `Warning ("OTR error " ^ e)] @ recv message) )
   | `String message ->
-    let warn = handle_cleartext ctx (Some message) in
-    (ctx, None, warn, None)
-  | `ParseError (err, message) ->
-    let warn = handle_cleartext ctx (Some message) in
-    (reset_session ctx, Some ("?OTR Error: " ^ err), warn, None)
+    let user = handle_cleartext ctx in
+    (ctx, None, user @ recv (Some message))
+  | `ParseError err ->
+    (reset_session ctx,
+     Some ("?OTR Error: " ^ err),
+     [`Warning (err ^ " while processing OTR message")])

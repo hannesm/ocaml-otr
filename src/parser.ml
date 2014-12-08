@@ -78,7 +78,7 @@ open Sexplib.Conv
 
 type ret = [
   | `Data of Cstruct.t * string option
-  | `ParseError of string * string
+  | `ParseError of string
   | `Error of string * string option
   | `PlainTag of State.version list * string option
   | `Query of State.version list * string option
@@ -116,19 +116,19 @@ let classify_input bytes =
   | Ok (pre, data) ->
     ( match parse_data data with
       | Ok (data, post) -> `Data (data, maybe_concat pre post)
-      | Error _ -> `ParseError ("Malformed OTR data message", bytes) )
+      | Error _ -> `ParseError "Malformed OTR data message" )
   | Error _ -> match re_match otr_err_mark bytes with
     | Ok (pre, data) -> `Error (data, pre)
     | Error _ -> match re_match otr_query_mark bytes with
       | Ok (pre, data) ->
         ( match parse_query data with
           | Ok (versions, post) -> `Query (versions, maybe_concat pre post)
-          | Error _ -> `ParseError ("Malformed OTR query", bytes) )
+          | Error _ -> `ParseError "Malformed OTR query" )
       | Error _ -> match re_match tag_prefix bytes with
         | Ok (pre, data) ->
           ( match parse_plain_tag data with
             | Ok (versions, post) -> `PlainTag (versions, maybe_concat pre post)
-            | Error _ -> `ParseError ("Malformed tag", bytes) )
+            | Error _ -> `ParseError "Malformed tag" )
         | Error _ -> `String bytes
 
 (* real OTR data parsing *)
