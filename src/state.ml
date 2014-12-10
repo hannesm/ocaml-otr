@@ -36,12 +36,23 @@ type message_state = [
   | `MSGSTATE_FINISHED
 ] with sexp
 
+let message_state_to_string = function
+  | `MSGSTATE_PLAINTEXT -> "plain"
+  | `MSGSTATE_ENCRYPTED _ -> "encrypted"
+  | `MSGSTATE_FINISHED -> "finished"
+
 type auth_state =
   | AUTHSTATE_NONE
   | AUTHSTATE_AWAITING_DHKEY of Cstruct.t * Cstruct.t * dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_REVEALSIG of dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_SIG of Cstruct.t * keyblock * dh_params * Cstruct.t
 with sexp
+
+let auth_state_to_string = function
+  | AUTHSTATE_NONE -> "none"
+  | AUTHSTATE_AWAITING_DHKEY _ -> "awaiting dh key"
+  | AUTHSTATE_AWAITING_REVEALSIG _ -> "awaiting reveal signature"
+  | AUTHSTATE_AWAITING_SIG _ -> "awaiting signature"
 
 type policy = [
   | `REQUIRE_ENCRYPTION
@@ -86,6 +97,13 @@ type session = {
   ssid : Cstruct.t ;
   high : bool ;
 } with sexp
+
+let session_to_string s =
+  let instances = match s.instances with
+    | None -> ""
+    | Some (x, y) -> " instances: " ^ (Int32.to_string x) ^ ", " ^ (Int32.to_string y)
+  in
+  "OTR " ^ (version_to_string s.version) ^ " message state: " ^ (message_state_to_string s.state.message_state) ^ " auth state: " ^ (auth_state_to_string s.state.auth_state) ^ instances
 
 let dsa0 =
   let emp = Cstruct.create 0 in
