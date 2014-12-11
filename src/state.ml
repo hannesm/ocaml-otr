@@ -64,8 +64,8 @@ type policy = [
 let policy_to_string = function
   | `REQUIRE_ENCRYPTION   -> "require encryption"
   | `SEND_WHITESPACE_TAG  -> "send whitespace tag"
-  | `WHITESPACE_START_AKE -> "whitespace starts ake"
-  | `ERROR_START_AKE      -> "error starts ake"
+  | `WHITESPACE_START_AKE -> "whitespace starts key exchange"
+  | `ERROR_START_AKE      -> "error starts key exchange"
 
 let policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ]
 
