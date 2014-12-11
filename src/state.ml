@@ -37,9 +37,9 @@ type message_state = [
 ] with sexp
 
 let message_state_to_string = function
-  | `MSGSTATE_PLAINTEXT -> "plain"
+  | `MSGSTATE_PLAINTEXT   -> "plain"
   | `MSGSTATE_ENCRYPTED _ -> "encrypted"
-  | `MSGSTATE_FINISHED -> "finished"
+  | `MSGSTATE_FINISHED    -> "finished"
 
 type auth_state =
   | AUTHSTATE_NONE
@@ -49,10 +49,10 @@ type auth_state =
 with sexp
 
 let auth_state_to_string = function
-  | AUTHSTATE_NONE -> "none"
-  | AUTHSTATE_AWAITING_DHKEY _ -> "awaiting dh key"
+  | AUTHSTATE_NONE                 -> "none"
+  | AUTHSTATE_AWAITING_DHKEY _     -> "awaiting dh key"
   | AUTHSTATE_AWAITING_REVEALSIG _ -> "awaiting reveal signature"
-  | AUTHSTATE_AWAITING_SIG _ -> "awaiting signature"
+  | AUTHSTATE_AWAITING_SIG _       -> "awaiting signature"
 
 type policy = [
   | `REQUIRE_ENCRYPTION
@@ -62,10 +62,10 @@ type policy = [
 ] with sexp
 
 let policy_to_string = function
-  | `REQUIRE_ENCRYPTION -> "require encryption"
-  | `SEND_WHITESPACE_TAG -> "send whitespace tag"
+  | `REQUIRE_ENCRYPTION   -> "require encryption"
+  | `SEND_WHITESPACE_TAG  -> "send whitespace tag"
   | `WHITESPACE_START_AKE -> "whitespace starts ake"
-  | `ERROR_START_AKE -> "error starts ake"
+  | `ERROR_START_AKE      -> "error starts ake"
 
 let policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ]
 
@@ -103,7 +103,24 @@ let session_to_string s =
     | None -> ""
     | Some (x, y) -> " instances: " ^ (Int32.to_string x) ^ ", " ^ (Int32.to_string y)
   in
-  "OTR " ^ (version_to_string s.version) ^ " message state: " ^ (message_state_to_string s.state.message_state) ^ " auth state: " ^ (auth_state_to_string s.state.auth_state) ^ instances
+  let version =
+    if
+      s.state.message_state = `MSGSTATE_PLAINTEXT &&
+      s.state.auth_state = AUTHSTATE_NONE
+    then
+      ""
+    else
+      (version_to_string s.version) ^ " "
+  in
+  let auth_state =
+    if s.state.message_state = `MSGSTATE_PLAINTEXT then
+      ""
+    else
+      " (auth " ^ (auth_state_to_string s.state.auth_state) ^ ")"
+  in
+  "OTR " ^ version ^
+  "state: " ^ (message_state_to_string s.state.message_state) ^ auth_state ^
+  instances
 
 let dsa0 =
   let emp = Cstruct.create 0 in
