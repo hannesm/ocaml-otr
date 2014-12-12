@@ -207,7 +207,7 @@ let send_otr ctx data =
      `Warning ("didn't sent message, there was no encrypted connection: " ^ data))
   | `MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
     (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
-    (ctx, Some (Builder.tag ctx.config.versions ^ data), `Sent data)
+    (ctx, Some (data ^ (Builder.tag ctx.config.versions)), `Sent data)
   | `MSGSTATE_PLAINTEXT -> (ctx, Some data, `Sent data)
   | `MSGSTATE_ENCRYPTED keys ->
     ( match encrypt ctx.version ctx.instances keys data with
