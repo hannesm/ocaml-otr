@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 00e74e57ec00ddc853456772f29f1420)
+# DO NOT EDIT (digest: bb0c1f7145f80990f0adfdc0adf7b3e6)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -25,6 +25,8 @@ true: annot, bin_annot
 "src/parser.cmx": for-pack(Otr)
 "src/ake.cmx": for-pack(Otr)
 "src/handshake.cmx": for-pack(Otr)
+<src/otr.{cma,cmxa}>: oasis_library_otr_byte
+<src/*.ml{,i,y}>: oasis_library_otr_byte
 <src/*.ml{,i,y}>: pkg_cstruct
 <src/*.ml{,i,y}>: pkg_cstruct.syntax
 <src/*.ml{,i,y}>: pkg_nocrypto
