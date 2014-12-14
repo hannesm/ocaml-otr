@@ -175,6 +175,10 @@ let check_version_instances ctx version instances =
     | `V2, _ , _ -> return ctx
     | _ -> fail InstanceMismatch )
 
+let format_ssid { ssid ; high ; _ } =
+  let f, s = Cstruct.split ssid 4 in
+  Cstruct.(high, to_string f, to_string s)
+
 let handle_auth ctx bytes =
   let open Packet in
   safe_parse Parser.parse_header bytes >>= fun (version, typ, instances, buf) ->
@@ -212,12 +216,12 @@ let handle_auth ctx bytes =
   | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
     (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
     check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out) ->
-    (ctx, Some out, [`Established_encrypted_session])
+    (ctx, Some out, [`Established_encrypted_session (format_ssid ctx)])
 
   | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
     (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
     check_sig ctx keys dh_params gy buf >|= fun ctx ->
-    (ctx, None, [`Established_encrypted_session])
+    (ctx, None, [`Established_encrypted_session (format_ssid ctx)])
 
   | DATA, _ -> fail Unexpected
 
