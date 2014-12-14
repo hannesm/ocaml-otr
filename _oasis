@@ -16,6 +16,7 @@ Library "otr"
   Modules         : Tracing, Packet, Control, Crypto, State, Builder, Parser, Ake, Handshake
   Pack            : true
   BuildDepends    : cstruct, cstruct.syntax, sexplib.syntax, nocrypto
+  ByteOpt         : -w A-4-33-40-41-42-43-34-44
 
 Library "tests"
   Path            : tests/
