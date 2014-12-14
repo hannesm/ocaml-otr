@@ -101,7 +101,8 @@ type session = {
 let session_to_string s =
   let instances = match s.instances with
     | None -> ""
-    | Some (x, y) -> " instances: " ^ (Int32.to_string x) ^ ", " ^ (Int32.to_string y)
+    | Some (x, y) ->
+      Printf.sprintf " instances: other %08x, my %08x" (Int32.to_int x) (Int32.to_int y)
   in
   let version =
     if
@@ -118,8 +119,8 @@ let session_to_string s =
     else
       " (auth " ^ (auth_state_to_string s.state.auth_state) ^ ")"
   in
-  "OTR " ^ version ^
   "state: " ^ (message_state_to_string s.state.message_state) ^ auth_state ^
+  version ^
   instances
 
 let dsa0 =
