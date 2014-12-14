@@ -81,7 +81,7 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
     | Some s -> return s
     | None -> fail (Unknown "invalid DH public key")  ) >|= fun shared_secret ->
   let keys = Crypto.derive_keys shared_secret in
-  let { c ; m1 ; m2 } = keys in
+  let { c ; m1 ; m2 ; _ } = keys in
   let keyidb = 1l in
   let enc_sig = mac_sign_encrypt m1 c ctx.config.dsa gx gy keyidb in
   let mac = Crypto.mac160 ~key:m2 enc_sig in
@@ -126,7 +126,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   return ({ ctx with state ; their_dsa = Some pubb ; ssid ; high = false },
           Builder.signature ctx.version ctx.instances enc_sig m)
 
-let check_sig ctx { ssid ; c' ; m1' ; m2' } (dh_secret, gx) gy signature =
+let check_sig ctx { ssid ; c' ; m1' ; m2' ; _ } (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
   safe_parse Parser.decode_data signature >>= fun (enc_data, mac) ->
   guard (Cstruct.len mac = 20) (Unknown "mac has wrong length") >>= fun () ->

@@ -67,7 +67,7 @@ let update_keys keys send recv dh_y ctr =
   else
     keys
 
-let handle_tlv state typ buf =
+let handle_tlv state typ _buf =
   let open Packet in
   match typ with
   | Some PADDING -> (state, None, [])
@@ -105,7 +105,7 @@ let handle_tlvs state = function
 
 let decrypt keys version instances bytes =
   match Parser.parse_data bytes with
-  | Parser.Ok (version', instances', flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
+  | Parser.Ok (version', instances', _flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
     select_dh keys s_keyid r_keyid >>= fun ((dh_secret, gx), gy, ctr) ->
     if version <> version' then
       return (keys, None, [`Warning "ignoring message with invalid version"])
@@ -227,7 +227,7 @@ let end_otr ctx =
     let data = Cstruct.to_string (Builder.tlv 1) in
     ( match encrypt ctx.version ctx.instances keys ("\000" ^ data) with
       | Ok (_keys, out) -> (reset_session ctx, wrap_b64string (Some out))
-      | Error e -> (reset_session ctx, None) )
+      | Error _ -> (reset_session ctx, None) )
   | `MSGSTATE_FINISHED ->
      (reset_session ctx, None)
 
