@@ -72,8 +72,8 @@ let policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_
 type version = [ `V2 | `V3 ] with sexp
 
 let version_to_string = function
-  | `V2 -> "Version 2"
-  | `V3 -> "Version 3"
+  | `V2 -> "version 2"
+  | `V3 -> "version 3"
 
 let versions = [ `V2 ; `V3 ]
 
@@ -102,7 +102,7 @@ let session_to_string s =
   let instances = match s.instances with
     | None -> ""
     | Some (x, y) ->
-      Printf.sprintf " instances: other %08x, my %08x" (Int32.to_int x) (Int32.to_int y)
+      Printf.sprintf ", instances: other %08x, my %08x" (Int32.to_int x) (Int32.to_int y)
   in
   let version =
     if
@@ -111,7 +111,7 @@ let session_to_string s =
     then
       ""
     else
-      (version_to_string s.version) ^ " "
+      " " ^ (version_to_string s.version)
   in
   let auth_state =
     if s.state.message_state = `MSGSTATE_PLAINTEXT then
