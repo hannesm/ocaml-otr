@@ -104,7 +104,7 @@ let session_to_string s =
   let instances = match s.instances with
     | None -> ""
     | Some (x, y) ->
-      Printf.sprintf ", instances: other %08x, my %08x" (Int32.to_int x) (Int32.to_int y)
+      Printf.sprintf ", instances: other %04x, my %04x" (Int32.to_int x) (Int32.to_int y)
   in
   let version =
     if
