@@ -4,7 +4,7 @@ open State
 (* Monadic control-flow core. *)
 type error =
   | Unknown of string
-  | Unexpected
+  | Unexpected of bool
   | VersionMismatch
   | InstanceMismatch
 
@@ -223,6 +223,8 @@ let handle_auth ctx bytes =
     check_sig ctx keys dh_params gy buf >|= fun ctx ->
     (ctx, None, [`Established_encrypted_session (format_ssid ctx)])
 
-  | DATA, _ -> fail Unexpected
+  | DATA, _ ->
+    safe_parse Parser.parse_data_body buf >>= fun (flag, _, _, _, _, _, _, _) ->
+    fail (Unexpected flag)
 
   | _ -> (* ignore this message *) return (ctx, None, [`Warning "ignoring unknown message"])

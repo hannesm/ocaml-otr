@@ -199,6 +199,7 @@ let parse_data_body buf =
   catch (sub buf 0) 20 >>= fun mac ->
   decode_data (shift buf 20) >>= fun (reveal, buf) ->
   guard (len buf = 0) Underflow >|= fun () ->
+  let flags = if flags = 1 then true else false in
   (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
 
 let parse_data buf =

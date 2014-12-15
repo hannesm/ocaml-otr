@@ -63,11 +63,11 @@ let signature version instances enc mac =
   let header = header version instances SIGNATURE in
   header <+> encode_data enc <+> mac
 
-let data version instances keyida keyidb dh_y ctr data =
+let data version instances flags keyida keyidb dh_y ctr data =
   let open Cstruct in
   let header = header version instances DATA in
   let keys = create 9 in
-  set_uint8 keys 0 0 ;
+  set_uint8 keys 0 (if flags then 1 else 0) ;
   BE.set_uint32 keys 1 keyida ;
   BE.set_uint32 keys 5 keyidb ;
   let ctr =

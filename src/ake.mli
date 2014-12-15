@@ -1,7 +1,7 @@
 
 type error =
   | Unknown of string
-  | Unexpected
+  | Unexpected of bool
   | VersionMismatch
   | InstanceMismatch
 

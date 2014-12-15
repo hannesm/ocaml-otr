@@ -18,7 +18,7 @@ let commit ctx their_versions =
   | Ake.Error (Ake.Unknown e) -> fail e
   | Ake.Error Ake.VersionMismatch -> fail "couldn't agree on a version"
   | Ake.Error Ake.InstanceMismatch -> fail "wrong instances"
-  | Ake.Error Ake.Unexpected -> fail "unexpected message"
+  | Ake.Error (Ake.Unexpected _) -> fail "unexpected message"
 
 let handle_whitespace_tag ctx their_versions =
   let warn = handle_cleartext ctx in
@@ -143,7 +143,7 @@ let decrypt keys version instances bytes =
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
-let encrypt version instances keys ?(reveal = Cstruct.create 0) data =
+let encrypt version instances flags keys ?(reveal = Cstruct.create 0) data =
   let (dh_secret, gx), gy = (keys.previous_dh, keys.gy) in
   let high = Crypto.mpi_gt gx gy in
   ( match Crypto.dh_shared dh_secret gy with
@@ -153,7 +153,7 @@ let encrypt version instances keys ?(reveal = Cstruct.create 0) data =
   let our_ctr = Int64.succ keys.our_ctr in
   let enc = Crypto.crypt ~key:sendaes ~ctr:our_ctr (Cstruct.of_string data) in
   let our_id = Int32.pred keys.our_keyid in
-  let data = Builder.data version instances our_id keys.their_keyid (snd keys.dh) our_ctr enc in
+  let data = Builder.data version instances flags our_id keys.their_keyid (snd keys.dh) our_ctr enc in
   let mac = Crypto.sha1mac ~key:sendmac data in
   let reveal = Builder.encode_data reveal in
   let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
@@ -170,10 +170,13 @@ let handle_data ctx bytes =
   | `MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
       | Ake.Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn)
-      | Ake.Error Ake.Unexpected ->
-        return (ctx,
-                Some "?OTR Error: ignoring unreadable message",
-                [`Warning "received encrypted data while in plaintext mode, ignoring unreadable message"])
+      | Ake.Error (Ake.Unexpected ignore) ->
+        if ignore then
+          return (ctx, None, [])
+        else
+          return (ctx,
+                  Some "?OTR Error: ignoring unreadable message",
+                  [`Warning "received encrypted data while in plaintext mode, ignoring unreadable message"])
       | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
       | Ake.Error Ake.VersionMismatch ->
         return (ctx, None, [`Warning "wrong version in message"])
@@ -185,7 +188,7 @@ let handle_data ctx bytes =
     handle_tlvs state data >>= fun (state, out, warn) ->
     ( match out with
       | None -> return (state, None)
-      | Some x -> match encrypt ctx.version ctx.instances keys x with
+      | Some x -> match encrypt ctx.version ctx.instances false keys x with
         | Ok (keys, out) ->
           return ({ state with message_state = `MSGSTATE_ENCRYPTED keys },
                   wrap_b64string (Some out))
@@ -210,7 +213,7 @@ let send_otr ctx data =
     (ctx, Some (data ^ (Builder.tag ctx.config.versions)), `Sent data)
   | `MSGSTATE_PLAINTEXT -> (ctx, Some data, `Sent data)
   | `MSGSTATE_ENCRYPTED keys ->
-    ( match encrypt ctx.version ctx.instances keys data with
+    ( match encrypt ctx.version ctx.instances false keys data with
       | Ok (keys, out) ->
         let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED keys } in
         let out = wrap_b64string (Some out) in
@@ -225,7 +228,7 @@ let end_otr ctx =
   | `MSGSTATE_ENCRYPTED keys ->
     (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
     let data = Cstruct.to_string (Builder.tlv 1) in
-    ( match encrypt ctx.version ctx.instances keys ("\000" ^ data) with
+    ( match encrypt ctx.version ctx.instances true keys ("\000" ^ data) with
       | Ok (_keys, out) -> (reset_session ctx, wrap_b64string (Some out))
       | Error _ -> (reset_session ctx, None) )
   | `MSGSTATE_FINISHED ->
