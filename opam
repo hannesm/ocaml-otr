@@ -18,6 +18,7 @@ remove: ["ocamlfind" "remove" "otr"]
 depends: [
   "ocamlfind"
   "cstruct" {>= "1.2.0"}
+  "type_conv"
   "sexplib"
   "nocrypto" {>= "0.2.0"}
 ]
