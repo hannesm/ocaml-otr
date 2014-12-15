@@ -13,7 +13,7 @@ export OPAMYES=1
 
 opam init git://github.com/ocaml/opam-repository >/dev/null 2>&1
 
-opam pin add otr .
+opam pin -n add otr .
 opam install --deps-only otr
 opam install oUnit
 
