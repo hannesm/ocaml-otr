@@ -1,5 +1,3 @@
-# OPAM packages needed to build tests.
-OPAM_PACKAGES="cstruct sexplib nocrypto oUnit"
 
 case "$OCAML_VERSION" in
     4.01.0) ppa=avsm/ocaml41+opam12 ;;
@@ -15,7 +13,8 @@ export OPAMYES=1
 
 opam init git://github.com/ocaml/opam-repository >/dev/null 2>&1
 
-opam install ${OPAM_PACKAGES}
+opam install --deps-only otr
+opam install oUnit
 
 eval `opam config env`
 ocaml setup.ml -configure --enable-tests
