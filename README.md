@@ -8,4 +8,4 @@ OCaml-OTR
 
 Only versions 2 and 3 are supported.
 
-Best to be used with the otr branch of [xmpp](http://github.com/hannesm/xmpp) and the lwt_test binary.
+Best to be used with [jacline](http://github.com/hannesm/jackine).
