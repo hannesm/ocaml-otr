@@ -5,12 +5,14 @@ type error =
 include Control.Or_error with type err = error
 
 type ret = [
-  | `Data of Cstruct.t * string option
+  | `Data of Cstruct.t
   | `ParseError of string
-  | `Error of string * string option
+  | `Error of string
   | `PlainTag of State.version list * string option
-  | `Query of State.version list * string option
+  | `Query of State.version list
   | `String of string
+  | `Fragment_v2 of (int * int) * string
+  | `Fragment_v3 of (int32 * int32) * (int * int) * string
 ] with sexp
 
 val classify_input : string -> ret

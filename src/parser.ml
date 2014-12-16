@@ -50,14 +50,6 @@ let parse_query_exn str =
 
 let parse_query = catch parse_query_exn
 
-(* string parsing, classification *)
-let maybe_concat pre post =
-  match pre, post with
-  | None, None -> None
-  | Some pre, Some post -> Some ("before: " ^ pre ^ " after: " ^ post)
-  | Some pre, None -> Some pre
-  | None, Some post -> Some post
-
 let re_match_exn re relen data =
   let idx = Str.search_forward re data 0 in
   match string_split data idx with
@@ -67,22 +59,26 @@ let re_match_exn re relen data =
 let re_match (re, relen) data =
   try Ok (re_match_exn re relen data) with _ -> Error (Unknown "parse failed")
 
-let otr_mark, otr_err_mark, otr_query_mark, tag_prefix =
+let otr_mark, otr_err_mark, otr_v2_frag, otr_v3_frag, otr_query_mark, tag_prefix =
   let re str = (Str.regexp_string str, String.length str) in
   (re "?OTR:",
    re "?OTR Error:",
+   re "?OTR,",
+   re "?OTR|",
    re "?OTR",
    re " \t  \t\t\t\t \t \t \t ")
 
 open Sexplib.Conv
 
 type ret = [
-  | `Data of Cstruct.t * string option
+  | `Data of Cstruct.t
   | `ParseError of string
-  | `Error of string * string option
+  | `Error of string
   | `PlainTag of State.version list * string option
-  | `Query of State.version list * string option
+  | `Query of State.version list
   | `String of string
+  | `Fragment_v2 of (int * int) * string
+  | `Fragment_v3 of (int32 * int32) * (int * int) * string
 ] with sexp
 
 let parse_data_exn data =
@@ -110,26 +106,74 @@ let parse_plain_tag_exn data =
 
 let parse_plain_tag = catch parse_plain_tag_exn
 
-(* TODO: fragmentation (',' as final character) *)
+
+let parse_fragment_exn data =
+  match string_split data (String.index data ',') with
+  | Some k, Some data ->
+    ( match string_split data (String.index data ',') with
+      | Some n, Some piece ->
+          let k = int_of_string k in
+          let n = int_of_string n in
+          assert (k > 0 && k <= 65535 ) ;
+          assert (n > 0 && n <= 65535 && k <= n) ;
+          assert (String.length piece > 0) ;
+          let last = pred (String.length piece) in
+          assert (String.index piece ',' = last) ;
+          ((k, n), String.sub piece 0 last)
+      | _ -> raise_unknown "invalid fragment n" )
+  | _ -> raise_unknown "invalid fragment k"
+
+let parse_fragment = catch parse_fragment_exn
+
+let parse_fragment_v3_exn data =
+  match string_split data (String.index data '|') with
+  | Some sender_instance, Some data ->
+    ( match string_split data (String.index data ',') with
+      | Some receiver_instance, Some data ->
+        let sender_instance = Scanf.sscanf sender_instance "%lx" (fun x -> x) in
+        let receiver_instance = Scanf.sscanf receiver_instance "%lx" (fun x -> x) in
+        let kn, piece = parse_fragment_exn data in
+        ((sender_instance, receiver_instance), kn, piece)
+      | _ -> raise_unknown "invalid fragment (receiver_instance)" )
+  | _ -> raise_unknown "invalid fragment (sender_instance)"
+
+let parse_fragment_v3 = catch parse_fragment_v3_exn
+
 let classify_input bytes =
-  match re_match otr_mark bytes with
+  match re_match otr_v2_frag bytes with
   | Ok (pre, data) ->
-    ( match parse_data data with
-      | Ok (data, post) -> `Data (data, maybe_concat pre post)
-      | Error _ -> `ParseError "Malformed OTR data message" )
-  | Error _ -> match re_match otr_err_mark bytes with
-    | Ok (pre, data) -> `Error (data, pre)
-    | Error _ -> match re_match otr_query_mark bytes with
+    ( match parse_fragment data with
+      | Ok data when pre = None -> `Fragment_v2 data
+      | Ok _ -> `ParseError "Malformed v2 fragment (predata)"
+      | Error _ -> `ParseError "Malformed v2 fragment" )
+  | Error _ -> match re_match otr_v3_frag bytes with
+    | Ok (pre, data) ->
+      ( match parse_fragment_v3 data with
+        | Ok data when pre = None -> `Fragment_v3 data
+        | Ok _ -> `ParseError "Malformed v3 fragment (predata)"
+        | Error _ -> `ParseError "Malformed v3 fragment" )
+    | Error _ -> match re_match otr_mark bytes with
       | Ok (pre, data) ->
-        ( match parse_query data with
-          | Ok (versions, post) -> `Query (versions, maybe_concat pre post)
-          | Error _ -> `ParseError "Malformed OTR query" )
-      | Error _ -> match re_match tag_prefix bytes with
-        | Ok (pre, data) ->
-          ( match parse_plain_tag data with
-            | Ok (versions, post) -> `PlainTag (versions, maybe_concat pre post)
-            | Error _ -> `ParseError "Malformed tag" )
-        | Error _ -> `String bytes
+        ( match parse_data data with
+          | Ok (data, post) when pre = None && post = None -> `Data data
+          | Ok _ -> `ParseError "Malformed OTR data (pre/postdata)"
+          | Error _ -> `ParseError "Malformed OTR data message" )
+      | Error _ -> match re_match otr_err_mark bytes with
+        | Ok (pre, data) when pre = None -> `Error data
+        | Ok _ -> `ParseError "Malformed Error received (predata)"
+        | Error _ ->  match re_match otr_query_mark bytes with
+          | Ok (pre, data) ->
+            ( match parse_query data with
+              | Ok (versions, _) when pre = None -> `Query versions
+              | Ok _ -> `ParseError "Malformed OTR query (pre/postdata)"
+              | Error _ -> `ParseError "Malformed OTR query" )
+          | Error _ -> match re_match tag_prefix bytes with
+            | Ok (pre, data) ->
+              ( match parse_plain_tag data with
+                | Ok (versions, post) when post = None -> `PlainTag (versions, pre)
+                | Ok _ -> `ParseError "Malformed Tag (postdata)"
+                | Error _ -> `ParseError "Malformed tag" )
+            | Error _ -> `String bytes
 
 (* real OTR data parsing *)
 let decode_data_exn buf =

@@ -98,6 +98,7 @@ type session = {
   their_dsa : Nocrypto.Dsa.pub option ;
   ssid : Cstruct.t ;
   high : bool ;
+  fragments : ((int * int) * string) ;
 } with sexp
 
 let session_to_string s =
@@ -138,7 +139,8 @@ let (<?>) ma b = match ma with None -> b | Some a -> a
 
 let new_session config () =
   let state = { message_state = `MSGSTATE_PLAINTEXT ; auth_state = AUTHSTATE_NONE } in
-  { instances = None ; version = `V3 ; state ; config ; their_dsa = None ; ssid = Cstruct.create 0 ; high = false }
+  { instances = None ; version = `V3 ; state ; config ; their_dsa = None ;
+    ssid = Cstruct.create 0 ; high = false ; fragments = ((0, 0), "") }
 
 let empty_session ?policies ?versions ~dsa () =
   let def = default_config in
@@ -147,6 +149,7 @@ let empty_session ?policies ?versions ~dsa () =
   let config = { policies ; versions ; dsa } in
   new_session config ()
 
+let rst_frag ctx = { ctx with fragments = ((0, 0), "") }
 
 let reset_session ctx =
   empty_session ~policies:ctx.config.policies ~versions:ctx.config.versions ~dsa:ctx.config.dsa ()
