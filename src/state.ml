@@ -69,7 +69,7 @@ let policy_to_string = function
   | `WHITESPACE_START_AKE -> "whitespace starts key exchange"
   | `ERROR_START_AKE      -> "error starts key exchange"
 
-let policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ]
+let all_policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ]
 
 type version = [ `V2 | `V3 ] with sexp
 
@@ -77,7 +77,7 @@ let version_to_string = function
   | `V2 -> "version 2"
   | `V3 -> "version 3"
 
-let versions = [ `V2 ; `V3 ]
+let all_versions = [ `V2 ; `V3 ]
 
 type config = {
   policies : policy list ;
@@ -126,15 +126,6 @@ let session_to_string s =
   version ^
   instances
 
-let dsa0 =
-  let emp = Cstruct.create 0 in
-  Nocrypto.Dsa.priv ~p:emp ~q:emp ~gg:emp ~x:emp ~y:emp
-
-let default_config =
-  { policies = [ `REQUIRE_ENCRYPTION ; `WHITESPACE_START_AKE ] ;
-    versions = [ `V3 ; `V2 ] ;
-    dsa = dsa0 }
-
 let (<?>) ma b = match ma with None -> b | Some a -> a
 
 let new_session config () =
@@ -143,9 +134,8 @@ let new_session config () =
     ssid = Cstruct.create 0 ; high = false ; fragments = ((0, 0), "") }
 
 let empty_session ?policies ?versions ~dsa () =
-  let def = default_config in
-  let policies = policies <?> def.policies in
-  let versions = versions <?> def.versions in
+  let policies = policies <?> all_policies in
+  let versions = versions <?> all_versions in
   let config = { policies ; versions ; dsa } in
   new_session config ()
 
