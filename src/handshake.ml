@@ -253,12 +253,9 @@ let handle_fragment_v3 ctx instances kn frag =
 
 let recv text = match text with None -> [] | Some x -> [ `Received x ]
 
-(* session -> string -> (session * to_send * ret) *)
-let rec handle (ctx : session) bytes =
-  match Parser.classify_input bytes with
+let handle_input (ctx : session) = function
   | `PlainTag (versions, text) ->
-    ( let ctx = rst_frag ctx in
-      match handle_whitespace_tag ctx versions with
+    ( match handle_whitespace_tag ctx versions with
       | Ok (ctx, out, warn) ->
         (ctx, wrap_b64string out, warn @ recv text)
       | Error e ->
@@ -266,19 +263,16 @@ let rec handle (ctx : session) bytes =
          Some ("?OTR Error: " ^ e),
          [`Warning ("OTR Error: " ^ e)] @ recv text) )
   | `Query versions ->
-    ( let ctx = rst_frag ctx in
-      match commit ctx versions with
+    ( match commit ctx versions with
       | Ok (ctx, out) -> (ctx, wrap_b64string out, [])
       | Error e -> (reset_session ctx,
                     Some ("?OTR Error: " ^ e),
                     [`Warning ("OTR Error: " ^ e)] ) )
   | `Error message ->
-    let ctx = rst_frag ctx in
     let out = handle_error ctx in
     (reset_session ctx, out,
      [`Received_error ("Received OTR Error: " ^ message)])
   | `Data bytes ->
-    let ctx = rst_frag ctx in
     ( match handle_data ctx bytes with
       | Ok (ctx, out, warn) ->
         (ctx, out, warn)
@@ -287,24 +281,37 @@ let rec handle (ctx : session) bytes =
          Some ("?OTR Error: " ^ e),
          [ `Warning ("OTR error " ^ e)]) )
   | `String message ->
-    let ctx = rst_frag ctx in
     let user = handle_cleartext ctx in
     (ctx, None, user @ recv (Some message))
-  | `Fragment_v2 (kn, piece) ->
-    if ctx.version = `V2 then
-      match handle_fragment ctx kn piece with
-      | (ctx, None) -> (ctx, None, [])
-      | (ctx, Some x) -> handle ctx x
-    else
-      (reset_session ctx, Some ("?OTR Error: wrong version in fragment"), [])
-  | `Fragment_v3 (instances, kn, piece) ->
-    if ctx.version = `V3 then
-      match handle_fragment_v3 ctx instances kn piece with
-      | (ctx, None) -> (ctx, None, [])
-      | (ctx, Some x) -> handle ctx x
-    else
-      (reset_session ctx, Some ("?OTR Error: wrong version in fragment"), [])
   | `ParseError err ->
     (reset_session ctx,
      Some ("?OTR Error: " ^ err),
      [`Warning (err ^ " while processing OTR message")])
+  | `Fragment_v2 _ | `Fragment_v3 _ ->
+    (reset_session ctx,
+     Some ("?OTR Error: unexpected recursive fragment"),
+     [`Warning "ignoring unexpected recursive fragment"])
+
+let handle_fragments (ctx : session) = function
+  | `Fragment_v2 (kn, piece) ->
+    if ctx.version = `V2 then
+      return (handle_fragment ctx kn piece)
+    else
+      fail ("?OTR Error: wrong version in fragment")
+  | `Fragment_v3 (instances, kn, piece) ->
+    if ctx.version = `V3 then
+      return (handle_fragment_v3 ctx instances kn piece)
+    else
+      fail ("?OTR Error: wrong version in fragment")
+
+(* session -> string -> (session * to_send * ret) *)
+let handle (ctx : session) bytes =
+  match Parser.classify_input bytes with
+  | `Fragment_v2 _ | `Fragment_v3 _ as f ->
+    ( match handle_fragments ctx f with
+      | Ok (ctx, None)   -> (ctx, None, [])
+      | Ok (ctx, Some x) -> handle_input ctx (Parser.classify_input x)
+      | Error txt -> (ctx,
+                      Some ("?OTR Error: " ^ txt),
+                      [`Warning ("Error: " ^ txt)]) )
+    | x -> handle_input (rst_frag ctx) x
