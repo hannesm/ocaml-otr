@@ -111,8 +111,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   guard (Nocrypto.Uncommon.Cs.equal mac mac') (Unknown "mac does not match mac'") >>= fun () ->
   let xb = Crypto.crypt ~key:c ~ctr:0L enc_data in
   (* split into pubb, keyidb, sigb *)
-  safe_parse Parser.parse_signature_data xb >>= fun ((p, q, gg, y), keyidb, sigb) ->
-  let pubb = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
+  safe_parse Parser.parse_signature_data xb >>= fun (pubb, keyidb, sigb) ->
   mac_verify m1 sigb pubb gx gy keyidb >>= fun () ->
   (* pick keyida *)
   let keyida = 1l in
@@ -134,8 +133,7 @@ let check_sig ctx { ssid ; c' ; m1' ; m2' ; _ } (dh_secret, gx) gy signature =
   guard (Nocrypto.Uncommon.Cs.equal mac mymac) (Unknown "mac do not match") >>= fun () ->
   let dec = Crypto.crypt ~key:c' ~ctr:0L enc_data in
   (* split into puba keyida siga(Ma) *)
-  safe_parse Parser.parse_signature_data dec >>= fun ((p,q,gg,y), keyida, siga) ->
-  let puba = Nocrypto.Dsa.pub ~p ~q ~gg ~y in
+  safe_parse Parser.parse_signature_data dec >>= fun (puba, keyida, siga) ->
   mac_verify m1' siga puba gy gx keyida >>= fun () ->
   let keys = keys (dh_secret, gx) gy keyida in
   let state = {

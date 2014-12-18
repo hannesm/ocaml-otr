@@ -18,6 +18,10 @@ module OtrDsa = struct
 
   let (<+>) = Cs.append
 
+  let pub ~p ~q ~gg ~y =
+    let z_of_cs = Numeric.Z.of_cstruct_be ?bits:None in
+    { p = z_of_cs p ; q = z_of_cs q ; gg = z_of_cs gg ; y = z_of_cs y }
+
   let to_wire ?notag { p ; q ; gg ; y } =
     let tag =
       match notag with

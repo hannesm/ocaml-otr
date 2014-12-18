@@ -205,8 +205,6 @@ let parse_header bytes =
       (Some (mine, their), shift bytes 11) ) >|= fun (instances, buf) ->
   (version, typ, instances, buf)
 
-type key = Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t
-
 let parse_signature_data buf =
   catch (split buf) 2 >>= fun (tag, buf) ->
   guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") >>= fun () ->
@@ -214,7 +212,7 @@ let parse_signature_data buf =
   decode_data buf >>= fun (q, buf) ->
   decode_data buf >>= fun (gg, buf) ->
   decode_data buf >>= fun (y, buf) ->
-  let key = (p, q, gg, y) in
+  let key = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
   catch (BE.get_uint32 buf) 0 >>= fun keyida ->
   let buf = shift buf 4 in
   guard (len buf = 40) (Unknown "signature length") >|= fun () ->

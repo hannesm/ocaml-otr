@@ -2,6 +2,7 @@
 val mpi_gt : Cstruct.t -> Cstruct.t -> bool
 
 module OtrDsa : sig
+  val pub : p:Cstruct.t -> q:Cstruct.t -> gg:Cstruct.t -> y:Cstruct.t -> Nocrypto.Dsa.pub
   val to_wire : ?notag:unit -> Nocrypto.Dsa.pub -> Cstruct.t
   val priv_to_wire : Nocrypto.Dsa.priv -> Cstruct.t
   val fingerprint : Nocrypto.Dsa.pub -> Cstruct.t
