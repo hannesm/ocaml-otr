@@ -33,7 +33,9 @@ let safe_parse f x =
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =
   let (<+>) = Nocrypto.Uncommon.Cs.append in
-  let pub = Crypto.OtrDsa.priv_to_wire priv in
+  let pub =
+    let pub = Nocrypto.Dsa.pub_of_priv priv in
+    Crypto.OtrDsa.to_wire pub in
   let sigb =
     let gxmpi = Builder.encode_data gx
     and gympi = Builder.encode_data gy

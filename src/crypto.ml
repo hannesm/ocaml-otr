@@ -30,9 +30,6 @@ module OtrDsa = struct
     in
     tag <+> encode_mpi p <+> encode_mpi q <+> encode_mpi gg <+> encode_mpi y
 
-  let priv_to_wire k =
-    to_wire (pub_of_priv k)
-
   let fingerprint k =
     (* only handling key type 0000, DSA *)
     Hash.digest `SHA1 (to_wire ~notag:() k)
