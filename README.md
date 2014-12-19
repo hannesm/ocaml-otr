@@ -8,4 +8,4 @@ OCaml-OTR
 
 Only versions 2 and 3 are supported.
 
-Best to be used with [jacline](http://github.com/hannesm/jackine).
+Best to be used with [jackline](http://github.com/hannesm/jackine).
