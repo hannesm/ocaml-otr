@@ -128,12 +128,12 @@ let session_to_string s =
 
 let (<?>) ma b = match ma with None -> b | Some a -> a
 
-let new_session config () =
+let new_session config _ =
   let state = { message_state = `MSGSTATE_PLAINTEXT ; auth_state = AUTHSTATE_NONE } in
   { instances = None ; version = `V3 ; state ; config ; their_dsa = None ;
     ssid = Cstruct.create 0 ; high = false ; fragments = ((0, 0), "") }
 
-let empty_session ?policies ?versions ~dsa () =
+let empty_session ?policies ?versions ~dsa _ =
   let policies = policies <?> all_policies in
   let versions = versions <?> all_versions in
   let config = { policies ; versions ; dsa } in
