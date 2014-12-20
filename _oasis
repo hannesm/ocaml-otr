@@ -33,6 +33,14 @@ Executable "test_runner"
   MainIs          : unittestrunner.ml
   BuildDepends    : otr, tests
 
+Executable "feedback"
+  Build          $: flag(tests)
+  Path            : tests/
+  Install         : false
+  CompiledObject  : native
+  MainIs          : feedback.ml
+  BuildDepends    : otr
+
 Test it
   Command         : $test_runner -runner sequential
   Run            $: flag(tests)
