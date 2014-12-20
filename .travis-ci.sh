@@ -21,3 +21,5 @@ eval `opam config env`
 ocaml setup.ml -configure --enable-tests
 ocaml setup.ml -build
 ocaml setup.ml -test
+
+./feedback.native
