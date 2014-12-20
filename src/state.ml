@@ -5,7 +5,7 @@ type ret = [
   | `Warning of string
   | `Received_error of string
   | `Received of string
-  | `Established_encrypted_session of (bool * string * string)
+  | `Established_encrypted_session of string
   | `Received_encrypted of string
 ]
 

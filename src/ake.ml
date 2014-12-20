@@ -177,8 +177,10 @@ let check_version_instances ctx version instances =
     | _ -> fail InstanceMismatch )
 
 let format_ssid { ssid ; high ; _ } =
-  let f, s = Cstruct.split ssid 4 in
-  Cstruct.(high, to_string f, to_string s)
+  let f, s = Cstruct.BE.(get_uint32 ssid 0, get_uint32 ssid 4) in
+  Printf.sprintf "%s%08lx%s %s%08lx%s"
+    (if high then "[" else "") f (if high then "]" else "")
+    (if high then "" else "[") s (if high then "" else "]")
 
 let handle_auth ctx bytes =
   let open Packet in
