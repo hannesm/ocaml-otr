@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: bb0c1f7145f80990f0adfdc0adf7b3e6)
+# DO NOT EDIT (digest: 9f9fc3f0b67a77dae322476459cd646d)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -42,12 +42,18 @@ true: annot, bin_annot
 "tests/unittestrunner.native": pkg_sexplib.syntax
 "tests/unittestrunner.native": use_otr
 "tests/unittestrunner.native": use_tests
+<tests/*.ml{,i,y}>: pkg_cstruct.unix
+<tests/*.ml{,i,y}>: pkg_oUnit
+<tests/*.ml{,i,y}>: use_tests
+# Executable feedback
+"tests/feedback.native": pkg_cstruct
+"tests/feedback.native": pkg_cstruct.syntax
+"tests/feedback.native": pkg_nocrypto
+"tests/feedback.native": pkg_sexplib.syntax
+"tests/feedback.native": use_otr
 <tests/*.ml{,i,y}>: pkg_cstruct
 <tests/*.ml{,i,y}>: pkg_cstruct.syntax
-<tests/*.ml{,i,y}>: pkg_cstruct.unix
 <tests/*.ml{,i,y}>: pkg_nocrypto
-<tests/*.ml{,i,y}>: pkg_oUnit
 <tests/*.ml{,i,y}>: pkg_sexplib.syntax
 <tests/*.ml{,i,y}>: use_otr
-<tests/*.ml{,i,y}>: use_tests
 # OASIS_STOP
