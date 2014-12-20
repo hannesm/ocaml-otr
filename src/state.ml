@@ -22,14 +22,14 @@ type keyblock = {
 type dh_params = (Nocrypto.Dh.secret * Cstruct.t) with sexp
 
 type encryption_keys = {
-  dh : dh_params ;
+  dh          : dh_params ;
   previous_dh : dh_params ;
-  our_keyid : int32 ;
-  our_ctr : int64 ;
-  gy : Cstruct.t ;
+  our_keyid   : int32 ;
+  our_ctr     : int64 ;
+  gy          : Cstruct.t ;
   previous_gy : Cstruct.t ;
   their_keyid : int32 ;
-  their_ctr : int64 ;
+  their_ctr   : int64 ;
 } with sexp
 
 type message_state = [
