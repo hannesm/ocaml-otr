@@ -25,7 +25,7 @@ module OtrDsa = struct
   let to_wire ?notag { p ; q ; gg ; y } =
     let tag =
       match notag with
-      | None -> Cs.create_with 2 0
+      | None   -> Cs.create_with 2 0
       | Some _ -> Cstruct.create 0
     in
     tag <+> encode_mpi p <+> encode_mpi q <+> encode_mpi gg <+> encode_mpi y
