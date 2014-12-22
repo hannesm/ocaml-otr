@@ -2,7 +2,7 @@
 open State
 open Packet
 
-let (<+>) = Nocrypto.Uncommon.Cs.append
+let (<+>) = Nocrypto.Uncommon.Cs.(<+>)
 
 let query_message versions =
   let is v = List.mem v versions in

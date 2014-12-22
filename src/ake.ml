@@ -32,7 +32,7 @@ let safe_parse f x =
   | Parser.Error (Parser.Unknown x) -> fail (Unknown ("error while parsing: " ^ x))
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =
-  let (<+>) = Nocrypto.Uncommon.Cs.append in
+  let (<+>) = Nocrypto.Uncommon.Cs.(<+>) in
   let pub =
     let pub = Nocrypto.Dsa.pub_of_priv priv in
     Crypto.OtrDsa.to_wire pub

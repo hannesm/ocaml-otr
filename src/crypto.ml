@@ -6,7 +6,7 @@ open Nocrypto
 let encode_mpi n =
   Builder.encode_data (Numeric.Z.to_cstruct_be n)
 
-let (<+>) = Uncommon.Cs.append
+let (<+>) = Uncommon.Cs.(<+>)
 
 let mpi_gt h1 h2 =
   Numeric.Z.(of_cstruct_be h1 > of_cstruct_be h2)
@@ -15,8 +15,6 @@ module OtrDsa = struct
   open Nocrypto
   open Nocrypto.Dsa
   open Nocrypto.Uncommon
-
-  let (<+>) = Cs.append
 
   let pub ~p ~q ~gg ~y =
     let z_of_cs = Numeric.Z.of_cstruct_be ?bits:None in
