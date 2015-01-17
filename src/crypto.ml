@@ -1,6 +1,4 @@
 
-open State
-
 open Nocrypto
 
 let encode_mpi n =
@@ -49,7 +47,7 @@ let derive_keys data =
   let m2 = h2 "\003" in
   let m1' = h2 "\004" in
   let m2' = h2 "\005" in
-  { ssid ; c ; c' ; m1 ; m2 ; m1' ; m2' }
+  (ssid, c, c', m1, m2, m1', m2')
 
 
 let data_keys data high =

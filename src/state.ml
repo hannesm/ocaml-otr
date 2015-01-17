@@ -9,16 +9,6 @@ type ret = [
   | `Received_encrypted of string
 ]
 
-type keyblock = {
-  ssid : Cstruct.t ;
-  c    : Cstruct.t ;
-  c'   : Cstruct.t ;
-  m1   : Cstruct.t ;
-  m2   : Cstruct.t ;
-  m1'  : Cstruct.t ;
-  m2'  : Cstruct.t ;
-} with sexp
-
 type dh_params = (Nocrypto.Dh.secret * Cstruct.t) with sexp
 
 type encryption_keys = {
@@ -47,7 +37,7 @@ type auth_state =
   | AUTHSTATE_NONE
   | AUTHSTATE_AWAITING_DHKEY of Cstruct.t * Cstruct.t * dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_REVEALSIG of dh_params * Cstruct.t
-  | AUTHSTATE_AWAITING_SIG of Cstruct.t * keyblock * dh_params * Cstruct.t
+  | AUTHSTATE_AWAITING_SIG of Cstruct.t * (Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t) * dh_params * Cstruct.t
 with sexp
 
 let auth_state_to_string = function

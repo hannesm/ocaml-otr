@@ -9,7 +9,7 @@ module OtrDsa : sig
   val verify : key:Nocrypto.Dsa.pub -> Cstruct.t * Cstruct.t -> Cstruct.t -> bool
 end
 
-val derive_keys : Cstruct.t -> State.keyblock
+val derive_keys : Cstruct.t -> (Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t)
 val data_keys : Cstruct.t -> bool -> (Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t)
 
 val crypt : key:Cstruct.t -> ctr:int64 -> Cstruct.t -> Cstruct.t

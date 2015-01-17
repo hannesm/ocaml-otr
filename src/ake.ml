@@ -83,13 +83,13 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
   ( match Crypto.dh_shared dh_secret gy with
     | Some s -> return s
     | None -> fail (Unknown "invalid DH public key")  ) >|= fun shared_secret ->
-  let keys = Crypto.derive_keys shared_secret in
-  let { c ; m1 ; m2 ; _ } = keys in
+  let (ssid, c, c', m1, m2, m1', m2') = Crypto.derive_keys shared_secret in
   let keyidb = 1l in
   let enc_sig = mac_sign_encrypt m1 c ctx.config.dsa gx gy keyidb in
   let mac = Crypto.mac160 ~key:m2 enc_sig in
   let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
-  let state = { ctx.state with auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, keys, (dh_secret, gx), gy) } in
+  let auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, (ssid, c', m1', m2'), (dh_secret, gx), gy) in
+  let state = { ctx.state with auth_state } in
   ({ ctx with state }, reveal_sig)
 
 let keys previous_dh gy their_keyid =
@@ -109,7 +109,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   ( match Crypto.dh_shared dh_secret gx with
     | Some x -> return x
     | None -> fail (Unknown "invalid DH public key") ) >>= fun shared_secret ->
-  let { ssid ; c ; c' ; m1 ; m2 ; m1' ; m2' } = Crypto.derive_keys shared_secret in
+  let (ssid, c, c', m1, m2, m1', m2') = Crypto.derive_keys shared_secret in
   let mac' = Crypto.mac160 ~key:m2 enc_data in
   guard (Nocrypto.Uncommon.Cs.equal mac mac') (Unknown "mac does not match mac'") >>= fun () ->
   let xb = Crypto.crypt ~key:c ~ctr:0L enc_data in
@@ -128,7 +128,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   return ({ ctx with state ; their_dsa = Some pubb ; ssid ; high = false },
           Builder.signature ctx.version ctx.instances enc_sig m)
 
-let check_sig ctx { ssid ; c' ; m1' ; m2' ; _ } (dh_secret, gx) gy signature =
+let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
   safe_parse Parser.decode_data signature >>= fun (enc_data, mac) ->
   guard (Cstruct.len mac = 20) (Unknown "mac has wrong length") >>= fun () ->
