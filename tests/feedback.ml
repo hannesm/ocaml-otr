@@ -1,5 +1,5 @@
 open Otr.State
-open Otr.Handshake
+open Otr.Engine
 
 let teststring = "abcdedsajlkjdslkjflkjflkrjlkdlkadhkjncjknckj"
 
