@@ -29,3 +29,5 @@ val parse_data_body : Cstruct.t -> (bool * int32 * int32 * Cstruct.t * int64 * C
 val parse_query : string -> (State.version list * string option) or_error
 
 val parse_tlv : Cstruct.t -> (Packet.tlv_type option * Cstruct.t * Cstruct.t) or_error
+
+val parse_datas : Cstruct.t -> int -> (Cstruct.t list) or_error

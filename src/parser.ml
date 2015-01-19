@@ -256,3 +256,15 @@ let parse_tlv_exn buf =
   (int_to_tlv_type typ, sub buf 4 l, shift buf (4 + l))
 
 let parse_tlv = catch parse_tlv_exn
+
+let parse_datas buf n =
+  let rec p_data buf acc = function
+    | 0 when len buf = 0 -> return (List.rev acc)
+    | 0 -> fail Underflow
+    | n -> decode_data buf >>= fun (x, buf) -> p_data buf (x :: acc) (pred n)
+  in
+  catch (BE.get_uint32 buf) 0 >>= fun cnt ->
+  if cnt = Int32.of_int n then
+    p_data (shift buf 4) [] n
+  else
+    fail Underflow
