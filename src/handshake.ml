@@ -130,11 +130,16 @@ let decrypt keys version instances bytes =
       guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >|= fun () ->
       let dec = Cstruct.to_string (Crypto.crypt ~key:recvaes ~ctr:ctr' encdata) in
       let txt, data =
-        try
-          let stop = String.index dec '\000' in
+        let stop = try
+            String.index dec '\000'
+          with Not_found -> String.length dec
+        in
+        let txt = String.sub dec 0 stop in
+        if succ stop = String.length dec then
+          (txt, "")
+        else
           let stop' = succ stop in
-          String.(sub dec 0 stop, sub dec stop' (length dec - stop'))
-        with _ -> (dec, "")
+          (txt, String.(sub dec stop' (length dec - stop')))
       in
       let data = if data = "" then None else Some data in
       let ret = (if txt = "" then [] else [`Received_encrypted txt]) in
