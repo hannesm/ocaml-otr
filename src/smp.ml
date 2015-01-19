@@ -35,7 +35,7 @@ let start_smp ctx ?question secret =
   in
   let out = match question with
     | None -> Builder.tlv ~data Packet.SMP_MESSAGE_1
-    | Some x -> Builder.tlv ~data ~predata:(Cstruct.of_string x) Packet.SMP_MESSAGE_1Q
+    | Some x -> Builder.tlv ~data ~predata:(Cstruct.of_string (x ^ "\000")) Packet.SMP_MESSAGE_1Q
   in
   (smp_state, Some out)
 
