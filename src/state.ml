@@ -132,4 +132,5 @@ let empty_session ?policies ?versions ~dsa _ =
 let rst_frag ctx = { ctx with fragments = ((0, 0), "") }
 
 let reset_session ctx =
-  empty_session ~policies:ctx.config.policies ~versions:ctx.config.versions ~dsa:ctx.config.dsa ()
+  let cfg = ctx.config in
+  empty_session ~policies:cfg.policies ~versions:cfg.versions ~dsa:cfg.dsa ()

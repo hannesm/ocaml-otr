@@ -12,5 +12,4 @@ val send_otr : session -> string ->
 val end_otr : session -> session * string option
 
 (** [handle ctx data] is [ctx, out, ret] where [out] should be sent to the communication partner, [ret] presented to the user. *)
-val handle : session -> string ->
-  session * string option * ret list
+val handle : session -> string -> session * string option * ret list

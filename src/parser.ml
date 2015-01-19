@@ -4,7 +4,7 @@ open Cstruct
 open State
 
 type error =
-  | Unknown       of string
+  | Unknown of string
   | Underflow
 
 include Control.Or_error_make (struct type err = error end)
