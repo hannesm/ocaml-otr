@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 920d38ea10ffae4fe4fe77f1e02e77af)
+# DO NOT EDIT (digest: d84a56193c575057ea2a697fc53ea1bd)
 Tracing
 Packet
 Control
@@ -8,5 +8,6 @@ State
 Builder
 Parser
 Ake
+Smp
 Handshake
 # OASIS_STOP
