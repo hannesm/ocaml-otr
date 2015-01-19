@@ -193,7 +193,7 @@ let handle_data ctx bytes =
     handle_tlvs state data >>= fun (state, out, warn) ->
     ( match out with
       | None -> return (state, None)
-      | Some x -> match encrypt ctx.version ctx.instances false keys x with
+      | Some x -> match encrypt ctx.version ctx.instances false keys ("\000" ^ x) with
         | Ok (keys, out) ->
           return ({ state with message_state = `MSGSTATE_ENCRYPTED keys },
                   wrap_b64string (Some out))
