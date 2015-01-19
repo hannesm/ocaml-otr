@@ -232,8 +232,7 @@ let end_otr ctx =
   match ctx.state.message_state with
   | `MSGSTATE_PLAINTEXT -> (ctx, None)
   | `MSGSTATE_ENCRYPTED keys ->
-    (* Send a Data Message, encoding a message with an empty human-readable part, and TLV type 1. *)
-    let data = Cstruct.to_string (Builder.tlv 1) in
+    let data = Cstruct.to_string (Builder.tlv Packet.DISCONNECTED) in
     ( match encrypt ctx.version ctx.instances true keys ("\000" ^ data) with
       | Ok (_keys, out) -> (reset_session ctx, wrap_b64string (Some out))
       | Error _ -> (reset_session ctx, None) )

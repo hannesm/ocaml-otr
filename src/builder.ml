@@ -77,13 +77,20 @@ let data version instances flags keyida keyidb dh_y ctr data =
   in
   header <+> keys <+> encode_data dh_y <+> ctr <+> encode_data data
 
-let tlv ?data typ =
+let tlv ?data ?predata typ =
   let buf = Cstruct.create 4 in
-  Cstruct.BE.set_uint16 buf 0 typ ;
+  Cstruct.BE.set_uint16 buf 0 (Packet.tlv_type_to_int typ) ;
   match data with
   | Some payload ->
-    Cstruct.BE.set_uint16 buf 2 (Cstruct.len payload) ;
-    buf <+> payload
+    let llen = encode_int (Int32.of_int (List.length payload)) in
+    let data = Nocrypto.Uncommon.Cs.concat (llen :: List.map encode_data payload) in
+    let pred = match predata with
+      | None -> Cstruct.create 0
+      | Some x -> x
+    in
+    let data = pred <+> data in
+    Cstruct.BE.set_uint16 buf 2 (Cstruct.len data) ;
+    buf <+> data
   | None ->
     Cstruct.BE.set_uint16 buf 2 0 ;
     buf

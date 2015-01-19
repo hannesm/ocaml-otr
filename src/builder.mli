@@ -9,4 +9,4 @@ val reveal_signature : State.version -> (int32 * int32) option -> Cstruct.t -> C
 val signature : State.version -> (int32 * int32) option -> Cstruct.t -> Cstruct.t -> Cstruct.t
 val data : State.version -> (int32 * int32) option -> bool -> int32 -> int32 -> Cstruct.t -> int64 -> Cstruct.t -> Cstruct.t
 
-val tlv : ?data:Cstruct.t -> int -> Cstruct.t
+val tlv : ?data:Cstruct.t list -> ?predata:Cstruct.t -> Packet.tlv_type -> Cstruct.t
