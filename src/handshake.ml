@@ -67,14 +67,25 @@ let update_keys keys send recv dh_y ctr =
   else
     keys
 
-let handle_tlv state typ _buf =
+let handle_tlv state typ buf =
   let open Packet in
   match typ with
   | Some PADDING -> (state, None, [])
   | Some DISCONNECTED -> ({ state with message_state = `MSGSTATE_FINISHED },
                           None,
                           [`Warning "OTR connection lost"])
-  | Some _ -> (state, None, [`Warning "not handling this tlv"])
+  | Some EXTRA_SYMMETRIC_KEY -> (state, None, [`Warning "not handling extra symmetric key"])
+  | Some (SMP_MESSAGE_1
+         | SMP_MESSAGE_2
+         | SMP_MESSAGE_3
+         | SMP_MESSAGE_4
+         | SMP_ABORT
+         | SMP_MESSAGE_1Q as smp_type) ->
+    ( match Smp.handle_smp state.smp_state smp_type buf with
+      | Smp.Ok (smp_state, out, usr) -> ({ state with smp_state }, out, usr)
+      | Smp.Error e ->
+        let msg = Smp.error_to_string e in
+        ({ state with smp_state = SMPSTATE_EXPECT1 }, None, [`Warning msg]) )
   | None -> (state, None, [`Warning "unknown tlv type"])
 
 let rec filter_map ?(f = fun x -> x) = function
@@ -320,3 +331,34 @@ let handle ctx bytes =
                       Some ("?OTR Error: " ^ txt),
                       [`Warning ("Error: " ^ txt)]) )
     | x -> handle_input (rst_frag ctx) x
+
+let handle_smp ctx call =
+  let enc keys out smp_state =
+    match encrypt ctx.version ctx.instances false keys ("\000" ^ (Cstruct.to_string out)) with
+    | Ok (keys, out) ->
+      let message_state = `MSGSTATE_ENCRYPTED keys in
+      let state = { ctx.state with message_state ; smp_state } in
+      ({ ctx with state }, wrap_b64string (Some out), [])
+    | Error _ -> (ctx, None, [ `Warning "error while encrypting" ])
+  in
+  match ctx.state.message_state with
+  | `MSGSTATE_ENCRYPTED keys -> ( match call ctx with
+      | Smp.Ok (smp_state, Some out) -> enc keys out smp_state
+      | Smp.Ok (smp_state, None) ->
+        let state = { ctx.state with smp_state } in
+        ({ ctx with state }, None, [])
+      | Smp.Error e ->
+        let out = Builder.tlv Packet.SMP_ABORT in
+        let st, out, r = enc keys out SMPSTATE_EXPECT1 in
+        let err = Smp.error_to_string e in
+        (st, out, r @ [`Warning err]) )
+  | _ -> (ctx, None, [`Warning "need an encrypted session for SMP"])
+
+let start_smp ctx ?question secret =
+  handle_smp ctx (fun x -> Smp.start_smp x ?question secret)
+
+let abort_smp ctx =
+  handle_smp ctx (fun x -> Smp.abort_smp x.state.smp_state)
+
+let answer_smp ctx secret =
+  handle_smp ctx (fun x -> Smp.handle_secret x secret)

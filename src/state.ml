@@ -7,6 +7,10 @@ type ret = [
   | `Received of string
   | `Established_encrypted_session of string
   | `Received_encrypted of string
+  | `SMP_awaiting_secret
+  | `SMP_received_question of string
+  | `SMP_success
+  | `SMP_failure
 ]
 
 type dh_params = (Nocrypto.Dh.secret * Cstruct.t) with sexp
@@ -46,6 +50,21 @@ let auth_state_to_string = function
   | AUTHSTATE_AWAITING_REVEALSIG _ -> "awaiting reveal signature"
   | AUTHSTATE_AWAITING_SIG _       -> "awaiting signature"
 
+type smp_state =
+  | SMPSTATE_WAIT_FOR_Y of Cstruct.t * Cstruct.t
+  | SMPSTATE_EXPECT1
+  | SMPSTATE_EXPECT2 of Cstruct.t * Nocrypto.Dh.secret * Nocrypto.Dh.secret
+  | SMPSTATE_EXPECT3 of Cstruct.t * Cstruct.t * Cstruct.t * Nocrypto.Dh.secret * Cstruct.t * Cstruct.t
+  | SMPSTATE_EXPECT4 of Cstruct.t * Cstruct.t * Cstruct.t * Nocrypto.Dh.secret
+with sexp
+
+let smp_state_to_string = function
+  | SMPSTATE_WAIT_FOR_Y _ -> "waiting for secret"
+  | SMPSTATE_EXPECT1      -> "expect 1"
+  | SMPSTATE_EXPECT2 _    -> "expect 2"
+  | SMPSTATE_EXPECT3 _    -> "expect 3"
+  | SMPSTATE_EXPECT4 _    -> "expect 4"
+
 type policy = [
   | `REQUIRE_ENCRYPTION
   | `SEND_WHITESPACE_TAG
@@ -78,6 +97,7 @@ type config = {
 type state = {
   message_state : message_state ;
   auth_state    : auth_state ;
+  smp_state     : smp_state ;
 } with sexp
 
 type session = {
@@ -119,7 +139,11 @@ let session_to_string s =
 let (<?>) ma b = match ma with None -> b | Some a -> a
 
 let new_session config _ =
-  let state = { message_state = `MSGSTATE_PLAINTEXT ; auth_state = AUTHSTATE_NONE } in
+  let state = {
+    message_state = `MSGSTATE_PLAINTEXT ;
+    auth_state = AUTHSTATE_NONE ;
+    smp_state = SMPSTATE_EXPECT1
+  } in
   { instances = None ; version = `V3 ; state ; config ; their_dsa = None ;
     ssid = Cstruct.create 0 ; high = false ; fragments = ((0, 0), "") }
 

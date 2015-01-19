@@ -67,8 +67,9 @@ let dh_commit ctx their_versions =
     let instances = instances version in
     let dh_commit = Builder.dh_commit version instances gxmpi' h in
     let auth_state = AUTHSTATE_AWAITING_DHKEY (dh_commit, h, (dh_secret, gx), r)
-    and message_state = `MSGSTATE_PLAINTEXT in (* not entirely sure about this.. *)
-    let state = { auth_state ; message_state } in
+    and message_state = `MSGSTATE_PLAINTEXT (* not entirely sure about this.. *)
+    and smp_state = SMPSTATE_EXPECT1 in
+    let state = { auth_state ; message_state ; smp_state } in
     return ({ ctx with version ; instances ; state }, dh_commit)
 
 let dh_key_await_revealsig ctx buf =
@@ -123,7 +124,8 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   let keys = keys (dh_secret, gy) gx keyida in
   let state = {
     auth_state = AUTHSTATE_NONE ;
-    message_state = `MSGSTATE_ENCRYPTED keys
+    message_state = `MSGSTATE_ENCRYPTED keys ;
+    smp_state = SMPSTATE_EXPECT1 ;
   } in
   return ({ ctx with state ; their_dsa = Some pubb ; ssid ; high = false },
           Builder.signature ctx.version ctx.instances enc_sig m)
@@ -141,7 +143,8 @@ let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   let keys = keys (dh_secret, gx) gy keyida in
   let state = {
     auth_state = AUTHSTATE_NONE ;
-    message_state = `MSGSTATE_ENCRYPTED keys
+    message_state = `MSGSTATE_ENCRYPTED keys ;
+    smp_state = SMPSTATE_EXPECT1 ;
   } in
   return { ctx with state ; their_dsa = Some puba ; ssid ; high = true }
 
