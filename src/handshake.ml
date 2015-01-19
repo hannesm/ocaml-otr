@@ -145,7 +145,7 @@ let decrypt keys version instances bytes =
       let ret = (if txt = "" then [] else [`Received_encrypted txt]) in
       let keys = update_keys keys s_keyid r_keyid dh_y ctr' in
       (keys, data, ret)
-  | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported undeflow"
+  | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported underflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
 let encrypt version instances flags keys ?(reveal = Cstruct.create 0) data =
@@ -258,7 +258,7 @@ let handle_fragment_v3 ctx instances kn frag =
 
 let recv text = match text with None -> [] | Some x -> [ `Received x ]
 
-let handle_input (ctx : session) = function
+let handle_input ctx = function
   | `PlainTag (versions, text) ->
     ( match handle_whitespace_tag ctx versions with
       | Ok (ctx, out, warn) ->
@@ -297,7 +297,7 @@ let handle_input (ctx : session) = function
      Some ("?OTR Error: unexpected recursive fragment"),
      [`Warning "ignoring unexpected recursive fragment"])
 
-let handle_fragments (ctx : session) = function
+let handle_fragments ctx = function
   | `Fragment_v2 (kn, piece) ->
     if ctx.version = `V2 then
       return (handle_fragment ctx kn piece)
@@ -310,7 +310,7 @@ let handle_fragments (ctx : session) = function
       fail ("?OTR Error: wrong version in fragment")
 
 (* session -> string -> (session * to_send * ret) *)
-let handle (ctx : session) bytes =
+let handle ctx bytes =
   match Parser.classify_input bytes with
   | `Fragment_v2 _ | `Fragment_v3 _ as f ->
     ( match handle_fragments ctx f with
