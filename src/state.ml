@@ -117,23 +117,17 @@ let session_to_string s =
     | Some (x, y) ->
       Printf.sprintf ", instances: other %08lx, my %08lx" x y
   in
-  let version =
-    if
-      s.state.message_state = `MSGSTATE_PLAINTEXT &&
-      s.state.auth_state = AUTHSTATE_NONE
-    then
-      ""
-    else
-      " " ^ (version_to_string s.version)
-  in
-  let auth_state =
-    if s.state.message_state = `MSGSTATE_PLAINTEXT then
-      ""
-    else
-      " (auth " ^ (auth_state_to_string s.state.auth_state) ^ ")"
+  let state = s.state in
+  let version, auth_state, smp_state =
+    let ver v = " " ^ version_to_string v in
+    match state.message_state with
+    | `MSGSTATE_PLAINTEXT when state.auth_state = AUTHSTATE_NONE -> ("", " (auth none)", "")
+    | `MSGSTATE_PLAINTEXT -> (ver s.version, " (auth " ^ (auth_state_to_string state.auth_state) ^ ")", "")
+    | `MSGSTATE_ENCRYPTED _ -> (ver s.version, "", " (smp " ^ (smp_state_to_string state.smp_state) ^ ")")
+    | `MSGSTATE_FINISHED -> (ver s.version, "", "")
   in
   "state: " ^ (message_state_to_string s.state.message_state) ^ auth_state ^
-  version ^
+  version ^ smp_state ^
   instances
 
 let (<?>) ma b = match ma with None -> b | Some a -> a
