@@ -67,7 +67,7 @@ let dh_commit ctx their_versions =
     let instances = instances version in
     let dh_commit = Builder.dh_commit version instances gxmpi' h in
     let auth_state = AUTHSTATE_AWAITING_DHKEY (dh_commit, h, (dh_secret, gx), r)
-    and message_state = `MSGSTATE_PLAINTEXT (* not entirely sure about this.. *)
+    and message_state = MSGSTATE_PLAINTEXT (* not entirely sure about this.. *)
     and smp_state = SMPSTATE_EXPECT1 in
     let state = { auth_state ; message_state ; smp_state } in
     return ({ ctx with version ; instances ; state }, dh_commit)
@@ -100,6 +100,12 @@ let keys previous_dh gy their_keyid =
   { dh ; previous_dh ; our_keyid = 2l ;
     gy ; previous_gy ; their_keyid }
 
+let format_ssid ssid high =
+  let f, s = Cstruct.BE.(get_uint32 ssid 0, get_uint32 ssid 4) in
+  Printf.sprintf "%s%08lx%s %s%08lx%s"
+    (if high then "[" else "") f (if high then "]" else "")
+    (if high then "" else "[") s (if high then "" else "]")
+
 let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   safe_parse Parser.parse_reveal buf >>= fun (r, enc_data, mac) ->
   safe_parse Parser.parse_dh_commit dh_commit >>= fun (gxenc, hgx) ->
@@ -116,19 +122,22 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   let xb = Crypto.crypt ~key:c ~ctr:0L enc_data in
   (* split into pubb, keyidb, sigb *)
   safe_parse Parser.parse_signature_data xb >>= fun (pubb, keyidb, sigb) ->
-  mac_verify m1 sigb pubb gx gy keyidb >>= fun () ->
+  mac_verify m1 sigb pubb gx gy keyidb >|= fun () ->
   (* pick keyida *)
   let keyida = 1l in
   let enc_sig = mac_sign_encrypt m1' c' ctx.config.dsa gy gx keyida in
   let m = Crypto.mac160 ~key:m2' enc_sig in
-  let keys = keys (dh_secret, gy) gx keyida in
+  let dh_keys = keys (dh_secret, gy) gx keyida in
+  let high = false in
+  let enc_data = { dh_keys ; symms = [] ; their_dsa = pubb ; ssid ; high } in
   let state = {
     auth_state = AUTHSTATE_NONE ;
-    message_state = `MSGSTATE_ENCRYPTED (keys, []) ;
+    message_state = MSGSTATE_ENCRYPTED enc_data ;
     smp_state = SMPSTATE_EXPECT1 ;
   } in
-  return ({ ctx with state ; their_dsa = Some pubb ; ssid ; high = false },
-          Builder.signature ctx.version ctx.instances enc_sig m)
+  ({ ctx with state },
+   Builder.signature ctx.version ctx.instances enc_sig m,
+   format_ssid ssid high)
 
 let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
@@ -139,14 +148,16 @@ let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   let dec = Crypto.crypt ~key:c' ~ctr:0L enc_data in
   (* split into puba keyida siga(Ma) *)
   safe_parse Parser.parse_signature_data dec >>= fun (puba, keyida, siga) ->
-  mac_verify m1' siga puba gy gx keyida >>= fun () ->
-  let keys = keys (dh_secret, gx) gy keyida in
+  mac_verify m1' siga puba gy gx keyida >|= fun () ->
+  let dh_keys = keys (dh_secret, gx) gy keyida in
+  let high = true in
+  let enc_data = { dh_keys ; symms = [] ; their_dsa = puba ; ssid ; high } in
   let state = {
     auth_state = AUTHSTATE_NONE ;
-    message_state = `MSGSTATE_ENCRYPTED (keys, []) ;
+    message_state = MSGSTATE_ENCRYPTED enc_data ;
     smp_state = SMPSTATE_EXPECT1 ;
   } in
-  return { ctx with state ; their_dsa = Some puba ; ssid ; high = true }
+  ({ ctx with state }, format_ssid ssid high)
 
 let handle_commit_await_key ctx dh_c h buf =
   (try return (Cstruct.sub buf (Cstruct.len buf - 32) 32)
@@ -178,12 +189,6 @@ let check_version_instances ctx version instances =
         return ctx
     | `V2, _ , _ -> return ctx
     | _ -> fail InstanceMismatch )
-
-let format_ssid { ssid ; high ; _ } =
-  let f, s = Cstruct.BE.(get_uint32 ssid 0, get_uint32 ssid 4) in
-  Printf.sprintf "%s%08lx%s %s%08lx%s"
-    (if high then "[" else "") f (if high then "]" else "")
-    (if high then "" else "[") s (if high then "" else "]")
 
 let handle_auth ctx bytes =
   let open Packet in
@@ -221,13 +226,13 @@ let handle_auth ctx bytes =
 
   | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
     (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-    check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out) ->
-    (ctx, Some out, [`Established_encrypted_session (format_ssid ctx)])
+    check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out, ssid) ->
+    (ctx, Some out, [`Established_encrypted_session ssid])
 
   | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
     (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-    check_sig ctx keys dh_params gy buf >|= fun ctx ->
-    (ctx, None, [`Established_encrypted_session (format_ssid ctx)])
+    check_sig ctx keys dh_params gy buf >|= fun (ctx, ssid) ->
+    (ctx, None, [`Established_encrypted_session ssid])
 
   | DATA, _ ->
     safe_parse Parser.parse_data_body buf >>= fun (flag, _, _, _, _, _, _, _) ->

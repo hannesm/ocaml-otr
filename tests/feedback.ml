@@ -57,19 +57,21 @@ let start_session _ =
   (* sig *)
   assert (List.length msg = 1) ;
   assert (ctxa.state.auth_state = AUTHSTATE_NONE) ;
-  (match ctxa.state.message_state with
-  | `MSGSTATE_ENCRYPTED _ -> ()
-  | _ -> assert false );
+  let ssida, higha = match ctxa.state.message_state with
+    | MSGSTATE_ENCRYPTED enc_data -> enc_data.ssid, enc_data.high
+    | _ -> assert false
+  in
   let out = match out with None -> assert false | Some x -> x in
   let ctxb, out, msg = handle ctxb out in
   (* finished *)
   assert (List.length msg = 1) ;
   assert (ctxb.state.auth_state = AUTHSTATE_NONE) ;
-  ( match ctxb.state.message_state with
-    | `MSGSTATE_ENCRYPTED _ -> ()
-    | _ -> assert false ) ;
-  assert (Cstruct.to_string ctxa.ssid = Cstruct.to_string ctxb.ssid) ;
-  ( match ctxa.high, ctxb.high with
+  let ssidb, highb = match ctxb.state.message_state with
+    | MSGSTATE_ENCRYPTED enc_data -> enc_data.ssid, enc_data.high
+    | _ -> assert false
+  in
+  assert (Nocrypto.Uncommon.Cs.equal ssida ssidb) ;
+  ( match higha, highb with
     | false, true -> ()
     | true, false -> ()
     | _ -> assert false ) ;
@@ -111,7 +113,7 @@ let start_session _ =
 
   let ctxa, fin = end_otr ctxa in
   ( match ctxa.state.message_state with
-    | `MSGSTATE_PLAINTEXT -> ()
+    | MSGSTATE_PLAINTEXT -> ()
     | _ -> assert false ) ;
   let fin = match fin with None -> assert false | Some x -> x in
   let ctxb, out, msg = handle ctxb fin in
@@ -120,7 +122,7 @@ let start_session _ =
     | (`Warning x)::[] -> assert (x = "OTR connection lost")
     | _ -> assert false ) ;
   ( match ctxb.state.message_state with
-    | `MSGSTATE_FINISHED -> ()
+    | MSGSTATE_FINISHED -> ()
     | _ -> assert false )
 
 let _ =

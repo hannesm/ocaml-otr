@@ -35,16 +35,24 @@ type symmetric_keys = {
 
 type symms = (int32 * int32 * symmetric_keys) list with sexp
 
-type message_state = [
-  | `MSGSTATE_PLAINTEXT
-  | `MSGSTATE_ENCRYPTED of dh_keys * symms
-  | `MSGSTATE_FINISHED
-] with sexp
+type enc_data = {
+  dh_keys   : dh_keys ;
+  symms     : symms ;
+  their_dsa : Nocrypto.Dsa.pub ;
+  ssid      : Cstruct.t ;
+  high      : bool ;
+} with sexp
+
+type message_state =
+  | MSGSTATE_PLAINTEXT
+  | MSGSTATE_ENCRYPTED of enc_data
+  | MSGSTATE_FINISHED
+with sexp
 
 let message_state_to_string = function
-  | `MSGSTATE_PLAINTEXT   -> "plain"
-  | `MSGSTATE_ENCRYPTED _ -> "encrypted"
-  | `MSGSTATE_FINISHED    -> "finished"
+  | MSGSTATE_PLAINTEXT   -> "plain"
+  | MSGSTATE_ENCRYPTED _ -> "encrypted"
+  | MSGSTATE_FINISHED    -> "finished"
 
 type auth_state =
   | AUTHSTATE_NONE
@@ -116,9 +124,6 @@ type session = {
   version : version ;
   state : state ;
   config : config ;
-  their_dsa : Nocrypto.Dsa.pub option ;
-  ssid : Cstruct.t ;
-  high : bool ;
   fragments : ((int * int) * string) ;
 } with sexp
 
@@ -135,10 +140,10 @@ let session_to_string s =
   let version, auth_state, smp_state =
     let ver v = " " ^ version_to_string v in
     match state.message_state with
-    | `MSGSTATE_PLAINTEXT when state.auth_state = AUTHSTATE_NONE -> ("", " (auth none)", "")
-    | `MSGSTATE_PLAINTEXT -> (ver s.version, " (auth " ^ (auth_state_to_string state.auth_state) ^ ")", "")
-    | `MSGSTATE_ENCRYPTED _ -> (ver s.version, "", " (smp " ^ (smp_state_to_string state.smp_state) ^ ")")
-    | `MSGSTATE_FINISHED -> (ver s.version, "", "")
+    | MSGSTATE_PLAINTEXT when state.auth_state = AUTHSTATE_NONE -> ("", " (auth none)", "")
+    | MSGSTATE_PLAINTEXT -> (ver s.version, " (auth " ^ (auth_state_to_string state.auth_state) ^ ")", "")
+    | MSGSTATE_ENCRYPTED _ -> (ver s.version, "", " (smp " ^ (smp_state_to_string state.smp_state) ^ ")")
+    | MSGSTATE_FINISHED -> (ver s.version, "", "")
   in
   "state: " ^ (message_state_to_string s.state.message_state) ^ auth_state ^
   version ^ smp_state ^
@@ -148,12 +153,11 @@ let (<?>) ma b = match ma with None -> b | Some a -> a
 
 let new_session config _ =
   let state = {
-    message_state = `MSGSTATE_PLAINTEXT ;
+    message_state = MSGSTATE_PLAINTEXT ;
     auth_state = AUTHSTATE_NONE ;
     smp_state = SMPSTATE_EXPECT1
   } in
-  { instances = None ; version = `V3 ; state ; config ; their_dsa = None ;
-    ssid = Cstruct.create 0 ; high = false ; fragments = ((0, 0), "") }
+  { instances = None ; version = `V3 ; state ; config ; fragments = ((0, 0), "") }
 
 let empty_session ?policies ?versions ~dsa _ =
   let policies = policies <?> all_policies in

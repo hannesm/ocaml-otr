@@ -8,9 +8,9 @@ include Control.Or_error_make (struct type err = error end)
 
 let handle_cleartext ctx =
   match ctx.state.message_state with
-  | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION -> [`Warning "received unencrypted data"]
-  | `MSGSTATE_PLAINTEXT -> []
-  | `MSGSTATE_ENCRYPTED _ | `MSGSTATE_FINISHED -> [`Warning "received unencrypted data"]
+  | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION -> [`Warning "received unencrypted data"]
+  | MSGSTATE_PLAINTEXT -> []
+  | MSGSTATE_ENCRYPTED _ | MSGSTATE_FINISHED -> [`Warning "received unencrypted data"]
 
 let commit ctx their_versions =
   match Ake.dh_commit ctx their_versions with
@@ -38,7 +38,7 @@ let handle_tlv state typ buf =
   let open Packet in
   match typ with
   | Some PADDING -> (state, None, [])
-  | Some DISCONNECTED -> ({ state with message_state = `MSGSTATE_FINISHED },
+  | Some DISCONNECTED -> ({ state with message_state = MSGSTATE_FINISHED },
                           None,
                           [`Warning "OTR connection lost"])
   | Some EXTRA_SYMMETRIC_KEY -> (state, None, [`Warning "not handling extra symmetric key"])
@@ -157,7 +157,7 @@ let wrap_b64string = function
 
 let handle_data ctx bytes =
   match ctx.state.message_state with
-  | `MSGSTATE_PLAINTEXT ->
+  | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
       | Ake.Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn)
       | Ake.Error (Ake.Unexpected ignore) ->
@@ -172,20 +172,23 @@ let handle_data ctx bytes =
         return (ctx, None, [`Warning "wrong version in message"])
       | Ake.Error Ake.InstanceMismatch ->
         return (ctx, None, [`Warning "wrong instances in message"]) )
-  | `MSGSTATE_ENCRYPTED (dh_keys, symm) ->
-    decrypt dh_keys symm ctx.version ctx.instances bytes >>= fun (dh_keys, symm, data, ret) ->
-    let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) } in
+  | MSGSTATE_ENCRYPTED enc_data ->
+    decrypt enc_data.dh_keys enc_data.symms ctx.version ctx.instances bytes >>= fun (dh_keys, symms, data, ret) ->
+    let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED { enc_data with dh_keys ; symms } } in
     handle_tlvs state data >>= fun (state, out, warn) ->
     let state, out = match out with
       | None -> (state, None)
       | Some x ->
-        let symm, out = encrypt dh_keys symm (reveal_macs ctx) ctx.version ctx.instances false ("\000" ^ x) in
-        ({ state with message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) },
-         wrap_b64string (Some out))
+        match state.message_state with
+        | MSGSTATE_ENCRYPTED enc_data ->
+          let symms, out = encrypt enc_data.dh_keys enc_data.symms (reveal_macs ctx) ctx.version ctx.instances false ("\000" ^ x) in
+          ({ state with message_state = MSGSTATE_ENCRYPTED { enc_data with symms } },
+           wrap_b64string (Some out))
+        | _ -> (state, out)
     in
     let ctx = { ctx with state } in
     return (ctx, out, ret @ warn)
-  | `MSGSTATE_FINISHED ->
+  | MSGSTATE_FINISHED ->
     return (ctx, None, [`Warning "received data while in finished state, ignoring"])
 
 (* operations triggered by a user *)
@@ -194,30 +197,30 @@ let start_otr ctx =
 
 let send_otr ctx data =
   match ctx.state.message_state with
-  | `MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
+  | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION ->
     (ctx,
      Some (Builder.query_message ctx.config.versions),
      `Warning ("didn't sent message, there was no encrypted connection: " ^ data))
-  | `MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
+  | MSGSTATE_PLAINTEXT when policy ctx `SEND_WHITESPACE_TAG ->
     (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
     (ctx, Some (data ^ (Builder.tag ctx.config.versions)), `Sent data)
-  | `MSGSTATE_PLAINTEXT -> (ctx, Some data, `Sent data)
-  | `MSGSTATE_ENCRYPTED (dh_keys, symm) ->
-    let symm, out = encrypt dh_keys symm (reveal_macs ctx) ctx.version ctx.instances false data in
-    let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) } in
+  | MSGSTATE_PLAINTEXT -> (ctx, Some data, `Sent data)
+  | MSGSTATE_ENCRYPTED enc_data ->
+    let symms, out = encrypt enc_data.dh_keys enc_data.symms (reveal_macs ctx) ctx.version ctx.instances false data in
+    let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED { enc_data with symms } } in
     let out = wrap_b64string (Some out) in
     ({ ctx with state }, out, `Sent_encrypted data)
-  | `MSGSTATE_FINISHED ->
+  | MSGSTATE_FINISHED ->
      (ctx, None, `Warning ("didn't sent message, OTR session is finished: " ^ data))
 
 let end_otr ctx =
   match ctx.state.message_state with
-  | `MSGSTATE_PLAINTEXT -> (ctx, None)
-  | `MSGSTATE_ENCRYPTED (dh_keys, symm) ->
+  | MSGSTATE_PLAINTEXT -> (ctx, None)
+  | MSGSTATE_ENCRYPTED enc_data ->
     let data = Cstruct.to_string (Builder.tlv Packet.DISCONNECTED) in
-    let _, out = encrypt dh_keys symm (reveal_macs ctx) ctx.version ctx.instances true ("\000" ^ data) in
+    let _, out = encrypt enc_data.dh_keys enc_data.symms (reveal_macs ctx) ctx.version ctx.instances true ("\000" ^ data) in
     (reset_session ctx, wrap_b64string (Some out))
-  | `MSGSTATE_FINISHED ->
+  | MSGSTATE_FINISHED ->
     (reset_session ctx, None)
 
 let handle_fragment ctx (k, n) frag =
@@ -303,33 +306,33 @@ let handle ctx bytes =
     | x -> handle_input (rst_frag ctx) x
 
 let handle_smp ctx call =
-  let enc dh_keys symm out smp_state =
+  let enc enc_data out smp_state =
     let data = "\000" ^ (Cstruct.to_string out) in
-    let symm, out = encrypt dh_keys symm (reveal_macs ctx) ctx.version ctx.instances false data in
-    let message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) in
+    let symms, out = encrypt enc_data.dh_keys enc_data.symms (reveal_macs ctx) ctx.version ctx.instances false data in
+    let message_state = MSGSTATE_ENCRYPTED { enc_data with symms } in
     let state = { ctx.state with message_state ; smp_state } in
     ({ ctx with state }, wrap_b64string (Some out))
   in
   match ctx.state.message_state with
-  | `MSGSTATE_ENCRYPTED (dh_keys, symm) -> ( match call ctx with
+  | MSGSTATE_ENCRYPTED enc_data -> ( match call enc_data ctx.state.smp_state with
       | Smp.Ok (smp_state, Some out) ->
-        let st, out = enc dh_keys symm out smp_state in
+        let st, out = enc enc_data out smp_state in
         (st, out, [])
       | Smp.Ok (smp_state, None) ->
         let state = { ctx.state with smp_state } in
         ({ ctx with state }, None, [])
       | Smp.Error e ->
         let out = Builder.tlv Packet.SMP_ABORT in
-        let st, out = enc dh_keys symm out SMPSTATE_EXPECT1 in
+        let st, out = enc enc_data out SMPSTATE_EXPECT1 in
         let err = Smp.error_to_string e in
         (st, out, [`Warning err]) )
   | _ -> (ctx, None, [`Warning "need an encrypted session for SMP"])
 
 let start_smp ctx ?question secret =
-  handle_smp ctx (fun x -> Smp.start_smp x ?question secret)
+  handle_smp ctx (fun enc smp -> Smp.start_smp ctx.config enc smp ?question secret)
 
 let abort_smp ctx =
-  handle_smp ctx (fun x -> Smp.abort_smp x.state.smp_state)
+  handle_smp ctx (fun _ smp -> Smp.abort_smp smp)
 
 let answer_smp ctx secret =
-  handle_smp ctx (fun x -> Smp.handle_secret x secret)
+  handle_smp ctx (fun enc smp -> Smp.handle_secret ctx.config enc smp secret)

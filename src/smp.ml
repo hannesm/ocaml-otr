@@ -11,16 +11,11 @@ let error_to_string = function
 
 include Control.Or_error_make (struct type err = error end)
 
-let own_fingerprint ctx =
-  Crypto.OtrDsa.fingerprint (Nocrypto.Dsa.pub_of_priv ctx.config.dsa)
+let fp = Crypto.OtrDsa.fingerprint
+let my_fp cfg = fp (Nocrypto.Dsa.pub_of_priv cfg.dsa)
 
-let their_fingerprint ctx =
-  match ctx.their_dsa with
-  | Some p -> Crypto.OtrDsa.fingerprint p
-  | None -> assert false
-
-let start_smp ctx ?question secret =
-  ( match ctx.state.smp_state with
+let start_smp cfg enc_data smp_state ?question secret =
+  ( match smp_state with
     | SMPSTATE_EXPECT1 -> return ()
     | _ -> fail UnexpectedMessage ) >|= fun () ->
   let a2, g2a = Crypto.gen_dh_secret ()
@@ -29,7 +24,7 @@ let start_smp ctx ?question secret =
   let c2, d2 = Crypto.proof_knowledge a2 1
   and c3, d3 = Crypto.proof_knowledge a3 2
   in
-  let x = Crypto.prepare_secret (own_fingerprint ctx) (their_fingerprint ctx) ctx.ssid secret in
+  let x = Crypto.prepare_secret (my_fp cfg) (fp enc_data.their_dsa) enc_data.ssid secret in
   let data = [ g2a ; c2 ; d2 ; g3a ; c3 ; d3 ]
   and smp_state = SMPSTATE_EXPECT2 (x, a2, a3)
   in
@@ -60,8 +55,8 @@ let handle_smp_1 data =
     else
       fail InvalidZeroKnowledgeProof
 
-let handle_secret ctx secret =
-  match ctx.state.smp_state with
+let handle_secret cfg enc_data smp_state secret =
+  match smp_state with
   | SMPSTATE_WAIT_FOR_Y (g2a, g3a) ->
     let b2, g2b = Crypto.gen_dh_secret ()
     and b3, g3b = Crypto.gen_dh_secret ()
@@ -72,7 +67,7 @@ let handle_secret ctx secret =
     ( match Crypto.dh_shared b2 g2a, Crypto.dh_shared b3 g3a with
       | Some g2, Some g3 ->
         let r, gr = Crypto.gen_dh_secret ()
-        and y = Crypto.prepare_secret (their_fingerprint ctx) (own_fingerprint ctx) ctx.ssid secret
+        and y = Crypto.prepare_secret (fp enc_data.their_dsa) (my_fp cfg) enc_data.ssid secret
         in
         let pb = Crypto.pow_s g3 r
         and qb = Crypto.mult_pow gr g2 y
