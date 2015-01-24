@@ -92,9 +92,15 @@ let group = Dh.Group.oakley_5
 let gen_dh_secret () =
   Dh.gen_secret group
 
+let dh_shared_exn = Dh.shared group
+
 let dh_shared dh_secret gy =
-  try Some (Dh.shared group dh_secret gy)
+  try Some (dh_shared_exn dh_secret gy)
   with Dh.Invalid_public_key -> None
+
+let check_gy gy =
+  let gy = Numeric.Z.of_cstruct_be gy in
+  gy <= Z.one || gy >= Z.(pred group.Dh.p) || gy = group.Dh.gg
 
 let smp_hash version mpis =
   let buf = Cstruct.create 1 in

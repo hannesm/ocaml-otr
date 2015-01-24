@@ -13,7 +13,7 @@ Description:
 
 Library "otr"
   Path            : src/
-  Modules         : Tracing, Packet, Control, Crypto, State, Builder, Parser, Ake, Smp, Engine
+  Modules         : Tracing, Packet, Control, Crypto, State, Ratchet, Builder, Parser, Ake, Smp, Engine
   Pack            : true
   BuildDepends    : cstruct, cstruct.syntax, sexplib.syntax, nocrypto
   ByteOpt         : -w A-4-33-40-41-42-43-34-44

@@ -15,20 +15,29 @@ type ret = [
 
 type dh_params = (Nocrypto.Dh.secret * Cstruct.t) with sexp
 
-type encryption_keys = {
+type dh_keys = {
   dh          : dh_params ;
   previous_dh : dh_params ;
   our_keyid   : int32 ;
-  our_ctr     : int64 ;
   gy          : Cstruct.t ;
   previous_gy : Cstruct.t ;
   their_keyid : int32 ;
-  their_ctr   : int64 ;
 } with sexp
+
+type symmetric_keys = {
+  send_aes : Cstruct.t ;
+  send_mac : Cstruct.t ;
+  send_ctr : int64 ;
+  recv_aes : Cstruct.t ;
+  recv_mac : Cstruct.t ;
+  recv_ctr : int64 ;
+} with sexp
+
+type symms = (int32 * int32 * symmetric_keys) list with sexp
 
 type message_state = [
   | `MSGSTATE_PLAINTEXT
-  | `MSGSTATE_ENCRYPTED of encryption_keys
+  | `MSGSTATE_ENCRYPTED of dh_keys * symms
   | `MSGSTATE_FINISHED
 ] with sexp
 

@@ -97,8 +97,8 @@ let keys previous_dh gy their_keyid =
   let dh = Crypto.gen_dh_secret ()
   and previous_gy = Cstruct.create 0
   in
-  { dh ; previous_dh ; our_keyid = 2l ; our_ctr = 0L ;
-    gy ; previous_gy ; their_keyid    ; their_ctr = 0L }
+  { dh ; previous_dh ; our_keyid = 2l ;
+    gy ; previous_gy ; their_keyid }
 
 let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   safe_parse Parser.parse_reveal buf >>= fun (r, enc_data, mac) ->
@@ -124,7 +124,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   let keys = keys (dh_secret, gy) gx keyida in
   let state = {
     auth_state = AUTHSTATE_NONE ;
-    message_state = `MSGSTATE_ENCRYPTED keys ;
+    message_state = `MSGSTATE_ENCRYPTED (keys, []) ;
     smp_state = SMPSTATE_EXPECT1 ;
   } in
   return ({ ctx with state ; their_dsa = Some pubb ; ssid ; high = false },
@@ -143,7 +143,7 @@ let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   let keys = keys (dh_secret, gx) gy keyida in
   let state = {
     auth_state = AUTHSTATE_NONE ;
-    message_state = `MSGSTATE_ENCRYPTED keys ;
+    message_state = `MSGSTATE_ENCRYPTED (keys, []) ;
     smp_state = SMPSTATE_EXPECT1 ;
   } in
   return { ctx with state ; their_dsa = Some puba ; ssid ; high = true }

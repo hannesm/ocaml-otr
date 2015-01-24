@@ -34,39 +34,6 @@ let handle_error ctx =
   else
     None
 
-let select_dh keys send recv =
-  ( if keys.their_keyid = send then
-      return (keys.gy, 0L)
-    else
-      ( guard (keys.their_keyid = Int32.succ send) "wrong keyid" >>= fun () ->
-        guard (Cstruct.len keys.previous_gy > 0) "no previous gy" >|= fun () ->
-        (keys.previous_gy, keys.their_ctr) ) ) >>= fun (gy, ctr) ->
-  ( if keys.our_keyid = recv then
-      return keys.dh
-    else
-      ( guard (keys.our_keyid = Int32.succ recv) "wrong keyid" >|= fun () ->
-        keys.previous_dh ) ) >|= fun dh ->
-  (dh, gy, ctr)
-
-let update_keys keys send recv dh_y ctr =
-  let keys = { keys with their_ctr = ctr } in
-  let keys =
-    if keys.their_keyid = send then
-      { keys with their_keyid = Int32.succ send ;
-                  previous_gy = keys.gy ;
-                  gy = dh_y ;
-                  their_ctr = 0L ; }
-    else
-      keys
-  in
-  if keys.our_keyid = recv then
-    { keys with our_keyid = Int32.succ recv ;
-                previous_dh = keys.dh ;
-                dh = Crypto.gen_dh_secret () ;
-                our_ctr = 0L ; }
-  else
-    keys
-
 let handle_tlv state typ buf =
   let open Packet in
   match typ with
@@ -114,67 +81,68 @@ let handle_tlvs state = function
     in
     return (state, out, warn)
 
-let decrypt keys version instances bytes =
+let decrypt dh_keys symm version instances bytes =
   match Parser.parse_data bytes with
   | Parser.Ok (version', instances', _flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
-    select_dh keys s_keyid r_keyid >>= fun ((dh_secret, gx), gy, ctr) ->
     if version <> version' then
-      return (keys, None, [`Warning "ignoring message with invalid version"])
+      return (dh_keys, symm, None, [`Warning "ignoring message with invalid version"])
     else if
       match version, instances, instances' with
       | `V3, Some (mya, myb), Some (youra, yourb) when (mya = youra) && (myb = yourb) -> false
       | `V2, _, _ -> false
       | _ -> true
     then
-      return (keys, None, [`Warning "ignoring message with invalid instances"])
-    else if ctr' <= ctr then
-      return (keys, None, [`Warning "ignoring message with invalid counter"])
+      return (dh_keys, symm, None, [`Warning "ignoring message with invalid instances"])
     else
-      let high = Crypto.mpi_gt gx gy in
-      ( match Crypto.dh_shared dh_secret gy with
-        | Some x -> return x
-        | None -> fail "invalid DH public key" ) >>= fun shared ->
-      let _, _, recvaes, recvmac = Crypto.data_keys shared high in
-      let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
-      guard (stop >= 0) "invalid data" >>= fun () ->
-      let mac' = Crypto.sha1mac ~key:recvmac (Cstruct.sub bytes 0 stop) in
-      guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >|= fun () ->
-      let dec = Cstruct.to_string (Crypto.crypt ~key:recvaes ~ctr:ctr' encdata) in
-      let txt, data =
-        let len = String.length dec in
-        let stop =
-          try String.index dec '\000'
-          with Not_found -> len
-        in
-        let txt = String.sub dec 0 stop in
-        if stop = len || succ stop = len then
-          (txt, "")
-        else
-          let stop' = succ stop in
-          (txt, String.sub dec stop' (len - stop'))
-      in
-      let data = if data = "" then None else Some data in
-      let ret = (if txt = "" then [] else [`Received_encrypted txt]) in
-      let keys = update_keys keys s_keyid r_keyid dh_y ctr' in
-      (keys, data, ret)
+      begin
+        match Ratchet.check_keys dh_keys s_keyid r_keyid dh_y with
+        | Some x -> return (dh_keys, symm, None, [`Warning x])
+        | None ->
+          let symm, keyblock = Ratchet.keys dh_keys symm s_keyid r_keyid in
+          if ctr' <= keyblock.recv_ctr then
+            return (dh_keys, symm, None, [`Warning "ignoring message with invalid counter"])
+          else
+            let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
+            guard (stop >= 0) "invalid data" >>= fun () ->
+            let mac' = Crypto.sha1mac ~key:keyblock.recv_mac (Cstruct.sub bytes 0 stop) in
+            guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >|= fun () ->
+            let dec = Cstruct.to_string (Crypto.crypt ~key:keyblock.recv_aes ~ctr:ctr' encdata) in
+            let txt, data =
+              let len = String.length dec in
+              let stop =
+                try String.index dec '\000'
+                with Not_found -> len
+              in
+              let txt = String.sub dec 0 stop in
+              if stop = len || succ stop = len then
+                (txt, "")
+              else
+                let stop' = succ stop in
+                (txt, String.sub dec stop' (len - stop'))
+            in
+            let data = if data = "" then None else Some data in
+            let ret = (if txt = "" then [] else [`Received_encrypted txt]) in
+            let dh_keys = Ratchet.rotate_keys dh_keys s_keyid r_keyid dh_y
+            and symm = Ratchet.set_recv_counter s_keyid r_keyid ctr' symm
+            in
+            (dh_keys, symm, data, ret)
+      end
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported underflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
-let encrypt version instances flags keys ?(reveal = Cstruct.create 0) data =
-  let (dh_secret, gx), gy = (keys.previous_dh, keys.gy) in
-  let high = Crypto.mpi_gt gx gy in
-  ( match Crypto.dh_shared dh_secret gy with
-    | Some x -> return x
-    | None -> fail "invalid DH public key" ) >|= fun shared ->
-  let sendaes, sendmac, _, _ = Crypto.data_keys shared high in
-  let our_ctr = Int64.succ keys.our_ctr in
-  let enc = Crypto.crypt ~key:sendaes ~ctr:our_ctr (Cstruct.of_string data) in
-  let our_id = Int32.pred keys.our_keyid in
-  let data = Builder.data version instances flags our_id keys.their_keyid (snd keys.dh) our_ctr enc in
-  let mac = Crypto.sha1mac ~key:sendmac data in
-  let reveal = Builder.encode_data reveal in
+let encrypt dh_keys symm version instances flags data =
+  let symm, reveal = Ratchet.reveal dh_keys symm in
+  let our_id = Int32.pred dh_keys.our_keyid in
+  let symm, keyblock = Ratchet.keys dh_keys symm dh_keys.their_keyid our_id in
+  let our_ctr = Int64.succ keyblock.send_ctr in
+  let enc = Crypto.crypt ~key:keyblock.send_aes ~ctr:our_ctr (Cstruct.of_string data) in
+  let data = Builder.data version instances flags our_id dh_keys.their_keyid (snd dh_keys.dh) our_ctr enc in
+  let mac = Crypto.sha1mac ~key:keyblock.send_mac data in
+  let macs = Nocrypto.Uncommon.Cs.concat (List.map (fun x -> x.recv_mac) reveal) in
+  let reveal = Builder.encode_data macs in
   let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
-  ({ keys with our_ctr }, out)
+  let symm = Ratchet.inc_send_counter dh_keys.their_keyid our_id symm in
+  (symm, out)
 
 let wrap_b64string = function
   | None -> None
@@ -199,19 +167,19 @@ let handle_data ctx bytes =
         return (ctx, None, [`Warning "wrong version in message"])
       | Ake.Error Ake.InstanceMismatch ->
         return (ctx, None, [`Warning "wrong instances in message"]) )
-  | `MSGSTATE_ENCRYPTED keys ->
-    decrypt keys ctx.version ctx.instances bytes >>= fun (keys, data, ret) ->
-    let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED keys } in
+  | `MSGSTATE_ENCRYPTED (dh_keys, symm) ->
+    decrypt dh_keys symm ctx.version ctx.instances bytes >>= fun (dh_keys, symm, data, ret) ->
+    let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) } in
     handle_tlvs state data >>= fun (state, out, warn) ->
-    ( match out with
-      | None -> return (state, None)
-      | Some x -> match encrypt ctx.version ctx.instances false keys ("\000" ^ x) with
-        | Ok (keys, out) ->
-          return ({ state with message_state = `MSGSTATE_ENCRYPTED keys },
-                  wrap_b64string (Some out))
-        | Error e -> fail e ) >|= fun (state, out) ->
+    let state, out = match out with
+      | None -> (state, None)
+      | Some x ->
+        let symm, out = encrypt dh_keys symm ctx.version ctx.instances false ("\000" ^ x) in
+        ({ state with message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) },
+         wrap_b64string (Some out))
+    in
     let ctx = { ctx with state } in
-    (ctx, out, ret @ warn)
+    return (ctx, out, ret @ warn)
   | `MSGSTATE_FINISHED ->
     return (ctx, None, [`Warning "received data while in finished state, ignoring"])
 
@@ -229,26 +197,23 @@ let send_otr ctx data =
     (* XXX: and you have not received a plaintext message from this correspondent since last entering MSGSTATE_PLAINTEXT *)
     (ctx, Some (data ^ (Builder.tag ctx.config.versions)), `Sent data)
   | `MSGSTATE_PLAINTEXT -> (ctx, Some data, `Sent data)
-  | `MSGSTATE_ENCRYPTED keys ->
-    ( match encrypt ctx.version ctx.instances false keys data with
-      | Ok (keys, out) ->
-        let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED keys } in
-        let out = wrap_b64string (Some out) in
-        ({ ctx with state }, out, `Sent_encrypted data)
-      | Error e -> (ctx, None, `Warning ("Otr error: " ^ e ^ " while trying to encrypt: " ^ data) ) )
+  | `MSGSTATE_ENCRYPTED (dh_keys, symm) ->
+    let symm, out = encrypt dh_keys symm ctx.version ctx.instances false data in
+    let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) } in
+    let out = wrap_b64string (Some out) in
+    ({ ctx with state }, out, `Sent_encrypted data)
   | `MSGSTATE_FINISHED ->
      (ctx, None, `Warning ("didn't sent message, OTR session is finished: " ^ data))
 
 let end_otr ctx =
   match ctx.state.message_state with
   | `MSGSTATE_PLAINTEXT -> (ctx, None)
-  | `MSGSTATE_ENCRYPTED keys ->
+  | `MSGSTATE_ENCRYPTED (dh_keys, symm) ->
     let data = Cstruct.to_string (Builder.tlv Packet.DISCONNECTED) in
-    ( match encrypt ctx.version ctx.instances true keys ("\000" ^ data) with
-      | Ok (_keys, out) -> (reset_session ctx, wrap_b64string (Some out))
-      | Error _ -> (reset_session ctx, None) )
+    let _, out = encrypt dh_keys symm ctx.version ctx.instances true ("\000" ^ data) in
+    (reset_session ctx, wrap_b64string (Some out))
   | `MSGSTATE_FINISHED ->
-     (reset_session ctx, None)
+    (reset_session ctx, None)
 
 let handle_fragment ctx (k, n) frag =
   match k, n, fst ctx.fragments with
@@ -333,25 +298,25 @@ let handle ctx bytes =
     | x -> handle_input (rst_frag ctx) x
 
 let handle_smp ctx call =
-  let enc keys out smp_state =
-    match encrypt ctx.version ctx.instances false keys ("\000" ^ (Cstruct.to_string out)) with
-    | Ok (keys, out) ->
-      let message_state = `MSGSTATE_ENCRYPTED keys in
-      let state = { ctx.state with message_state ; smp_state } in
-      ({ ctx with state }, wrap_b64string (Some out), [])
-    | Error _ -> (ctx, None, [ `Warning "error while encrypting" ])
+  let enc dh_keys symm out smp_state =
+    let symm, out = encrypt dh_keys symm ctx.version ctx.instances false ("\000" ^ (Cstruct.to_string out)) in
+    let message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) in
+    let state = { ctx.state with message_state ; smp_state } in
+    ({ ctx with state }, wrap_b64string (Some out))
   in
   match ctx.state.message_state with
-  | `MSGSTATE_ENCRYPTED keys -> ( match call ctx with
-      | Smp.Ok (smp_state, Some out) -> enc keys out smp_state
+  | `MSGSTATE_ENCRYPTED (dh_keys, symm) -> ( match call ctx with
+      | Smp.Ok (smp_state, Some out) ->
+        let st, out = enc dh_keys symm out smp_state in
+        (st, out, [])
       | Smp.Ok (smp_state, None) ->
         let state = { ctx.state with smp_state } in
         ({ ctx with state }, None, [])
       | Smp.Error e ->
         let out = Builder.tlv Packet.SMP_ABORT in
-        let st, out, r = enc keys out SMPSTATE_EXPECT1 in
+        let st, out = enc dh_keys symm out SMPSTATE_EXPECT1 in
         let err = Smp.error_to_string e in
-        (st, out, r @ [`Warning err]) )
+        (st, out, [`Warning err]) )
   | _ -> (ctx, None, [`Warning "need an encrypted session for SMP"])
 
 let start_smp ctx ?question secret =
