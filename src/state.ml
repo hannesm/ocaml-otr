@@ -170,3 +170,13 @@ let rst_frag ctx = { ctx with fragments = ((0, 0), "") }
 let reset_session ctx =
   let cfg = ctx.config in
   empty_session ~policies:cfg.policies ~versions:cfg.versions ~dsa:cfg.dsa ()
+
+let is_encrypted ctx =
+  match ctx.state.message_state with
+  | MSGSTATE_ENCRYPTED _ -> true
+  | _ -> false
+
+let their_dsa ctx =
+  match ctx.state.message_state with
+  | MSGSTATE_ENCRYPTED enc_data -> Some enc_data.their_dsa
+  | _ -> None
