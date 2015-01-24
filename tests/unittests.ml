@@ -1,6 +1,7 @@
 open OUnit2
 
 open Otr
+  (*
 open Otr.Parser
 
 let parse_query (input, (output, rest)) _ =
@@ -41,8 +42,8 @@ let query_tests =
 
 let parser_tests =
   query_tests
-
+*)
 let suite =
   "All" >::: [
-    "Parser" >::: parser_tests ;
+    (*    "Parser" >::: parser_tests ; *)
   ]

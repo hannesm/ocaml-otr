@@ -29,44 +29,51 @@ let start_session _ =
   Nocrypto.Rng.reseed buf ;
   let keya = Nocrypto.Dsa.generate `Fips1024 in
   let keyb = Nocrypto.Dsa.generate `Fips1024 in
-  let ctxa = empty_session ~dsa:keya () in
-  let ctxb = empty_session ~dsa:keyb () in
+  let cfga = config all_versions all_policies keya in
+  let cfgb = config all_versions all_policies keyb in
+  let ctxa = new_session cfga () in
+  let ctxb = new_session cfgb () in
   let ctxa, query = start_otr ctxa in
   let ctxb, out, msg = handle ctxb query in
   (* dh_commit *)
   assert (List.length msg = 0) ;
-  ( match ctxb.state.auth_state with
+(*  ( match ctxb.state.auth_state with
     | AUTHSTATE_AWAITING_DHKEY _ -> ()
-    | _ -> assert false );
+    | _ -> assert false ); *)
+  assert (not (is_encrypted ctxb)) ;
   let out = match out with None -> assert false | Some x -> x in
   let ctxa, out, msg = handle ctxa out in
   (* dh_key *)
   assert (List.length msg = 0) ;
-  ( match ctxa.state.auth_state with
+(*  ( match ctxa.state.auth_state with
     | AUTHSTATE_AWAITING_REVEALSIG _ -> ()
-    | _ -> assert false );
+    | _ -> assert false ); *)
+  assert (not (is_encrypted ctxa)) ;
   let out = match out with None -> assert false | Some x -> x in
   let ctxb, out, msg = handle ctxb out in
   (* reveal_sig *)
   assert (List.length msg = 0) ;
-  ( match ctxb.state.auth_state with
+(*  ( match ctxb.state.auth_state with
     | AUTHSTATE_AWAITING_SIG _ -> ()
-    | _ -> assert false );
+    | _ -> assert false ); *)
+  assert (not (is_encrypted ctxb)) ;
   let out = match out with None -> assert false | Some x -> x in
   let ctxa, out, msg = handle ctxa out in
   (* sig *)
   assert (List.length msg = 1) ;
-  assert (ctxa.state.auth_state = AUTHSTATE_NONE) ;
-  let ssida, higha = match ctxa.state.message_state with
+  (*  assert (ctxa.state.auth_state = AUTHSTATE_NONE) ; *)
+  assert (is_encrypted ctxa) ;
+  (*let ssida, higha = match ctxa.state.message_state with
     | MSGSTATE_ENCRYPTED enc_data -> enc_data.ssid, enc_data.high
     | _ -> assert false
-  in
+    in *)
   let out = match out with None -> assert false | Some x -> x in
   let ctxb, out, msg = handle ctxb out in
   (* finished *)
   assert (List.length msg = 1) ;
-  assert (ctxb.state.auth_state = AUTHSTATE_NONE) ;
-  let ssidb, highb = match ctxb.state.message_state with
+  (*  assert (ctxb.state.auth_state = AUTHSTATE_NONE) ; *)
+  assert (is_encrypted ctxb) ;
+(*  let ssidb, highb = match ctxb.state.message_state with
     | MSGSTATE_ENCRYPTED enc_data -> enc_data.ssid, enc_data.high
     | _ -> assert false
   in
@@ -74,7 +81,7 @@ let start_session _ =
   ( match higha, highb with
     | false, true -> ()
     | true, false -> ()
-    | _ -> assert false ) ;
+    | _ -> assert false ) ; *)
   let ctxa, out, str = send ctxa in
   let ctxb = recv ctxb out str in
   let ctxa, out, str = send ctxa in
@@ -112,18 +119,20 @@ let start_session _ =
   let ctxa = recv ctxa out str in
 
   let ctxa, fin = end_otr ctxa in
-  ( match ctxa.state.message_state with
+(*  ( match ctxa.state.message_state with
     | MSGSTATE_PLAINTEXT -> ()
-    | _ -> assert false ) ;
+    | _ -> assert false ) ; *)
+  assert (not (is_encrypted ctxa)) ;
   let fin = match fin with None -> assert false | Some x -> x in
   let ctxb, out, msg = handle ctxb fin in
   assert (out = None) ;
   ( match msg with
     | (`Warning x)::[] -> assert (x = "OTR connection lost")
     | _ -> assert false ) ;
-  ( match ctxb.state.message_state with
+  assert (not (is_encrypted ctxb))
+(*  ( match ctxb.state.message_state with
     | MSGSTATE_FINISHED -> ()
-    | _ -> assert false )
+    | _ -> assert false ) *)
 
 let _ =
   for i = 0 to 10 do
