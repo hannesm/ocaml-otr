@@ -130,7 +130,7 @@ let decrypt dh_keys symm version instances bytes =
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported underflow"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
-let encrypt dh_keys symm version instances flags data =
+let encrypt dh_keys symm reveal_macs version instances flags data =
   let symm, reveal = Ratchet.reveal dh_keys symm in
   let our_id = Int32.pred dh_keys.our_keyid in
   let symm, keyblock = Ratchet.keys dh_keys symm dh_keys.their_keyid our_id in
@@ -138,8 +138,13 @@ let encrypt dh_keys symm version instances flags data =
   let enc = Crypto.crypt ~key:keyblock.send_aes ~ctr:our_ctr (Cstruct.of_string data) in
   let data = Builder.data version instances flags our_id dh_keys.their_keyid (snd dh_keys.dh) our_ctr enc in
   let mac = Crypto.sha1mac ~key:keyblock.send_mac data in
-  let macs = Nocrypto.Uncommon.Cs.concat (List.map (fun x -> x.recv_mac) reveal) in
-  let reveal = Builder.encode_data macs in
+  let reveal =
+    if reveal_macs then
+      let macs = Nocrypto.Uncommon.Cs.concat (List.map (fun x -> x.recv_mac) reveal) in
+      Builder.encode_data macs
+    else
+      Cstruct.create 0
+  in
   let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
   let symm = Ratchet.inc_send_counter dh_keys.their_keyid our_id symm in
   (symm, out)
@@ -174,7 +179,7 @@ let handle_data ctx bytes =
     let state, out = match out with
       | None -> (state, None)
       | Some x ->
-        let symm, out = encrypt dh_keys symm ctx.version ctx.instances false ("\000" ^ x) in
+        let symm, out = encrypt dh_keys symm (reveal_macs ctx) ctx.version ctx.instances false ("\000" ^ x) in
         ({ state with message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) },
          wrap_b64string (Some out))
     in
@@ -198,7 +203,7 @@ let send_otr ctx data =
     (ctx, Some (data ^ (Builder.tag ctx.config.versions)), `Sent data)
   | `MSGSTATE_PLAINTEXT -> (ctx, Some data, `Sent data)
   | `MSGSTATE_ENCRYPTED (dh_keys, symm) ->
-    let symm, out = encrypt dh_keys symm ctx.version ctx.instances false data in
+    let symm, out = encrypt dh_keys symm (reveal_macs ctx) ctx.version ctx.instances false data in
     let state = { ctx.state with message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) } in
     let out = wrap_b64string (Some out) in
     ({ ctx with state }, out, `Sent_encrypted data)
@@ -210,7 +215,7 @@ let end_otr ctx =
   | `MSGSTATE_PLAINTEXT -> (ctx, None)
   | `MSGSTATE_ENCRYPTED (dh_keys, symm) ->
     let data = Cstruct.to_string (Builder.tlv Packet.DISCONNECTED) in
-    let _, out = encrypt dh_keys symm ctx.version ctx.instances true ("\000" ^ data) in
+    let _, out = encrypt dh_keys symm (reveal_macs ctx) ctx.version ctx.instances true ("\000" ^ data) in
     (reset_session ctx, wrap_b64string (Some out))
   | `MSGSTATE_FINISHED ->
     (reset_session ctx, None)
@@ -299,7 +304,8 @@ let handle ctx bytes =
 
 let handle_smp ctx call =
   let enc dh_keys symm out smp_state =
-    let symm, out = encrypt dh_keys symm ctx.version ctx.instances false ("\000" ^ (Cstruct.to_string out)) in
+    let data = "\000" ^ (Cstruct.to_string out) in
+    let symm, out = encrypt dh_keys symm (reveal_macs ctx) ctx.version ctx.instances false data in
     let message_state = `MSGSTATE_ENCRYPTED (dh_keys, symm) in
     let state = { ctx.state with message_state ; smp_state } in
     ({ ctx with state }, wrap_b64string (Some out))

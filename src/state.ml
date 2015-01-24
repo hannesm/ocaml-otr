@@ -79,6 +79,7 @@ type policy = [
   | `SEND_WHITESPACE_TAG
   | `WHITESPACE_START_AKE
   | `ERROR_START_AKE
+  | `REVEAL_MACS
 ] with sexp
 
 let policy_to_string = function
@@ -86,8 +87,9 @@ let policy_to_string = function
   | `SEND_WHITESPACE_TAG  -> "send whitespace tag"
   | `WHITESPACE_START_AKE -> "whitespace starts key exchange"
   | `ERROR_START_AKE      -> "error starts key exchange"
+  | `REVEAL_MACS          -> "reveal mac keys"
 
-let all_policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ]
+let all_policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ; `REVEAL_MACS ]
 
 type version = [ `V2 | `V3 ] with sexp
 
@@ -119,6 +121,9 @@ type session = {
   high : bool ;
   fragments : ((int * int) * string) ;
 } with sexp
+
+let reveal_macs session =
+  List.mem `REVEAL_MACS session.config.policies
 
 let session_to_string s =
   let instances = match s.instances with
