@@ -139,11 +139,12 @@ let encrypt dh_keys symm reveal_macs version instances flags data =
   let data = Builder.data version instances flags our_id dh_keys.their_keyid (snd dh_keys.dh) our_ctr enc in
   let mac = Crypto.sha1mac ~key:keyblock.send_mac data in
   let reveal =
-    if reveal_macs then
-      let macs = Nocrypto.Uncommon.Cs.concat (List.map (fun x -> x.recv_mac) reveal) in
-      Builder.encode_data macs
-    else
-      Cstruct.create 0
+    let macs = if reveal_macs then
+        Nocrypto.Uncommon.Cs.concat (List.map (fun x -> x.recv_mac) reveal)
+      else
+        Cstruct.create 0
+    in
+    Builder.encode_data macs
   in
   let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
   let symm = Ratchet.inc_send_counter dh_keys.their_keyid our_id symm in
