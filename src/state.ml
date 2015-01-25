@@ -161,12 +161,6 @@ let new_session config _ =
   } in
   { instances = None ; version = `V3 ; state ; config ; fragments = ((0, 0), "") }
 
-let empty_session ?policies ?versions ~dsa _ =
-  let policies = policies <?> all_policies in
-  let versions = versions <?> all_versions in
-  let config = { policies ; versions ; dsa } in
-  new_session config ()
-
 let config versions policies dsa =
   { versions ; policies ; dsa }
 
@@ -175,9 +169,7 @@ let versions cfg = cfg.versions
 
 let rst_frag ctx = { ctx with fragments = ((0, 0), "") }
 
-let reset_session ctx =
-  let cfg = ctx.config in
-  empty_session ~policies:cfg.policies ~versions:cfg.versions ~dsa:cfg.dsa ()
+let reset_session ctx = new_session ctx.config ()
 
 let is_encrypted ctx =
   match ctx.state.message_state with
