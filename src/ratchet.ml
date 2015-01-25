@@ -64,15 +64,17 @@ let keys dh_keys symm_keys send recv =
   | Some x ->
     (symm_keys, x)
 
-let rec set_recv_counter send recv newctr = function
-  | (s, r, k)::xs when s = send && r = recv -> (s, r, { k with recv_ctr = newctr })::xs
-  | x::xs -> x :: (set_recv_counter send recv newctr xs)
+let rec update_counter send recv update = function
+  | (s, r, k)::xs when s = send && r = recv -> (s, r, update k)::xs
+  | x::xs -> x :: (update_counter send recv update xs)
   | [] -> []
 
-let rec inc_send_counter send recv = function
-  | (s, r, k)::xs when s = send && r = recv -> (s, r, { k with send_ctr = Int64.succ k.send_ctr })::xs
-  | x::xs -> x :: (inc_send_counter send recv xs)
-  | [] -> []
+let set_recv_counter send recv newctr keys =
+  update_counter send recv (fun k -> { k with recv_ctr = newctr }) keys
+
+let inc_send_counter send recv keys =
+  let update = (fun k -> { k with send_ctr = Int64.succ k.send_ctr }) in
+  update_counter send recv update keys
 
 let rec erase_keys p = function
   | [] -> ([], [])
