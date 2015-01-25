@@ -159,12 +159,14 @@ let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   } in
   ({ ctx with state }, format_ssid ssid high)
 
-let handle_commit_await_key ctx dh_c h buf =
+let handle_commit_await_key ctx dh_c h version instances buf =
   (try return (Cstruct.sub buf (Cstruct.len buf - 32) 32)
-   with _ -> fail (Unknown "underflow") ) >|= fun their_hash ->
+   with _ -> fail (Unknown "underflow") ) >>= fun their_hash ->
   if Crypto.mpi_gt h their_hash then
-    (ctx, Some dh_c)
+    return (ctx, Some dh_c)
   else
+    guard (List.mem version ctx.config.versions) (Unknown "version") >|= fun () ->
+    let ctx = { ctx with version ; instances } in
     let ctx, dh_key = dh_key_await_revealsig ctx buf in
     (ctx, Some dh_key)
 
@@ -196,7 +198,7 @@ let handle_auth ctx bytes =
   (* simultaneous open *)
   match typ, ctx.state.auth_state with
   | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
-    handle_commit_await_key ctx dh_c h buf >|= fun (ctx, out) ->
+    handle_commit_await_key ctx dh_c h version instances buf >|= fun (ctx, out) ->
     (ctx, out, [])
   | _ ->
     check_version_instances ctx version instances >>= fun ctx ->
