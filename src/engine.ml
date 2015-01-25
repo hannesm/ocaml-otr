@@ -123,7 +123,7 @@ let decrypt dh_keys symm version instances bytes =
             let data = if data = "" then None else Some data in
             let ret = (if txt = "" then [] else [`Received_encrypted txt]) in
             let dh_keys = Ratchet.rotate_keys dh_keys s_keyid r_keyid dh_y
-            and symm = Ratchet.set_recv_counter s_keyid r_keyid ctr' symm
+            and symm = Ratchet.set_recv_counter ctr' s_keyid r_keyid symm
             in
             (dh_keys, symm, data, ret)
       end
