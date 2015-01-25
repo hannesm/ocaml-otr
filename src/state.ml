@@ -151,8 +151,6 @@ let session_to_string s =
   version ^ smp_state ^
   instances
 
-let (<?>) ma b = match ma with None -> b | Some a -> a
-
 let new_session config _ =
   let state = {
     message_state = MSGSTATE_PLAINTEXT ;
