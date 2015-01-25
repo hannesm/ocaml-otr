@@ -193,49 +193,52 @@ let check_version_instances ctx version instances =
 let handle_auth ctx bytes =
   let open Packet in
   safe_parse Parser.parse_header bytes >>= fun (version, typ, instances, buf) ->
-  check_version_instances ctx version instances >>= fun ctx ->
+  (* simultaneous open *)
   match typ, ctx.state.auth_state with
-  | DH_COMMIT, AUTHSTATE_NONE ->
-    let ctx, dh_key = dh_key_await_revealsig ctx buf in
-    return (ctx, Some dh_key, [])
   | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
     handle_commit_await_key ctx dh_c h buf >|= fun (ctx, out) ->
     (ctx, out, [])
-  | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
-    let auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) in
-    let state = { ctx.state with auth_state } in
-    let dh_key = Builder.dh_key ctx.version ctx.instances gx in
-    return ({ ctx with state }, Some dh_key, [])
-  | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
-    (* send dh_key, go to AWAITING_REVEALSIG *)
-    let ctx, dh_key = dh_key_await_revealsig ctx buf in
-    return (ctx, Some dh_key, [])
+  | _ ->
+    check_version_instances ctx version instances >>= fun ctx ->
+    match typ, ctx.state.auth_state with
+    | DH_COMMIT, AUTHSTATE_NONE ->
+      let ctx, dh_key = dh_key_await_revealsig ctx buf in
+      return (ctx, Some dh_key, [])
+    | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
+      let auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) in
+      let state = { ctx.state with auth_state } in
+      let dh_key = Builder.dh_key ctx.version ctx.instances gx in
+      return ({ ctx with state }, Some dh_key, [])
+    | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
+      (* send dh_key, go to AWAITING_REVEALSIG *)
+      let ctx, dh_key = dh_key_await_revealsig ctx buf in
+      return (ctx, Some dh_key, [])
 
-  | DH_KEY, AUTHSTATE_AWAITING_DHKEY (_, _, dh_params, r) ->
-    (* reveal_sig -> AUTHSTATE_AWAITING_SIG *)
-    check_key_reveal_sig ctx dh_params r buf >|= fun (ctx, reveal) ->
-    (ctx, Some reveal, [])
+    | DH_KEY, AUTHSTATE_AWAITING_DHKEY (_, _, dh_params, r) ->
+      (* reveal_sig -> AUTHSTATE_AWAITING_SIG *)
+      check_key_reveal_sig ctx dh_params r buf >|= fun (ctx, reveal) ->
+      (ctx, Some reveal, [])
 
-  | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
-    (* same dh_key? -> retransmit REVEAL_SIG *)
-    safe_parse Parser.parse_gy buf >|= fun gy' ->
-    if Nocrypto.Uncommon.Cs.equal gy gy' then
-      (ctx, Some reveal_sig, [])
-    else
-      (ctx, None, [])
+    | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
+      (* same dh_key? -> retransmit REVEAL_SIG *)
+      safe_parse Parser.parse_gy buf >|= fun gy' ->
+      if Nocrypto.Uncommon.Cs.equal gy gy' then
+        (ctx, Some reveal_sig, [])
+      else
+        (ctx, None, [])
 
-  | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
-    (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-    check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out, ssid) ->
-    (ctx, Some out, [`Established_encrypted_session ssid])
+    | REVEAL_SIGNATURE, AUTHSTATE_AWAITING_REVEALSIG (dh_params, dh_commit)  ->
+      (* do work, send signature -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
+      check_reveal_send_sig ctx dh_params dh_commit buf >|= fun (ctx, out, ssid) ->
+      (ctx, Some out, [`Established_encrypted_session ssid])
 
-  | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
-    (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
-    check_sig ctx keys dh_params gy buf >|= fun (ctx, ssid) ->
-    (ctx, None, [`Established_encrypted_session ssid])
+    | SIGNATURE, AUTHSTATE_AWAITING_SIG (_, keys, dh_params, gy) ->
+      (* decrypt signature, verify sig + macs -> AUTHSTATE_NONE, MSGSTATE_ENCRYPTED *)
+      check_sig ctx keys dh_params gy buf >|= fun (ctx, ssid) ->
+      (ctx, None, [`Established_encrypted_session ssid])
 
-  | DATA, _ ->
-    safe_parse Parser.parse_data_body buf >>= fun (flag, _, _, _, _, _, _, _) ->
-    fail (Unexpected flag)
+    | DATA, _ ->
+      safe_parse Parser.parse_data_body buf >>= fun (flag, _, _, _, _, _, _, _) ->
+      fail (Unexpected flag)
 
-  | _ -> (* ignore this message *) return (ctx, None, [`Warning "ignoring unknown message"])
+    | _ -> (* ignore this message *) return (ctx, None, [`Warning "ignoring unknown message"])
