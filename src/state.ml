@@ -156,10 +156,23 @@ let new_session config _ =
     message_state = MSGSTATE_PLAINTEXT ;
     auth_state = AUTHSTATE_NONE ;
     smp_state = SMPSTATE_EXPECT1
-  } in
-  { instances = None ; version = `V3 ; state ; config ; fragments = ((0, 0), "") }
+  }
+  and version = match config.versions with
+    | [x] -> x
+    | [] -> assert false
+    | x when List.mem `V3 x -> `V3
+    | _ -> `V2
+  in
+  { instances = None ;
+    version ;
+    state ;
+    config ;
+    fragments = ((0, 0), "")
+  }
 
 let config versions policies dsa =
+  if List.length versions = 0 then
+    invalid_arg "no versions supplied" ;
   { versions ; policies ; dsa }
 
 let policies cfg = cfg.policies
