@@ -29,6 +29,7 @@ let safe_parse f x =
   match f x with
   | Parser.Ok x -> return x
   | Parser.Error Parser.Underflow -> fail (Unknown "underflow error while parsing")
+  | Parser.Error Parser.LeadingZero -> fail (Unknown "leading zero of a MPI while parsing")
   | Parser.Error (Parser.Unknown x) -> fail (Unknown ("error while parsing: " ^ x))
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =

@@ -1,6 +1,7 @@
 type error =
   | Unknown       of string
   | Underflow
+  | LeadingZero
 
 include Control.Or_error with type err = error
 

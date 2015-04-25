@@ -6,6 +6,7 @@ open State
 type error =
   | Unknown of string
   | Underflow
+  | LeadingZero
 
 include Control.Or_error_make (struct type err = error end)
 
@@ -185,7 +186,8 @@ let decode_data = catch decode_data_exn
 
 let parse_gy data =
   decode_data data >>= fun (gy, rst) ->
-  guard (len rst = 0) Underflow >|= fun () ->
+  guard (len rst = 0) Underflow >>= fun () ->
+  guard (get_uint8 gy 0 <> 0) LeadingZero >|= fun () ->
   gy
 
 let parse_header bytes =
@@ -209,9 +211,13 @@ let parse_signature_data buf =
   catch (split buf) 2 >>= fun (tag, buf) ->
   guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") >>= fun () ->
   decode_data buf >>= fun (p, buf) ->
+  guard (get_uint8 p 0 <> 0) LeadingZero >>= fun () ->
   decode_data buf >>= fun (q, buf) ->
+  guard (get_uint8 q 0 <> 0) LeadingZero >>= fun () ->
   decode_data buf >>= fun (gg, buf) ->
+  guard (get_uint8 gg 0 <> 0) LeadingZero >>= fun () ->
   decode_data buf >>= fun (y, buf) ->
+  guard (get_uint8 y 0 <> 0) LeadingZero >>= fun () ->
   let key = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
   catch (BE.get_uint32 buf) 0 >>= fun keyida ->
   let buf = shift buf 4 in
@@ -236,6 +242,7 @@ let parse_data_body buf =
   catch (BE.get_uint32 buf) 1 >>= fun s_keyid ->
   catch (BE.get_uint32 buf) 5 >>= fun r_keyid ->
   decode_data (shift buf 9) >>= fun (dh_y, buf) ->
+  guard (get_uint8 dh_y 0 <> 0) LeadingZero >>= fun () ->
   catch (BE.get_uint64 buf) 0 >>= fun ctr ->
   decode_data (shift buf 8) >>= fun (encdata, buf) ->
   catch (sub buf 0) 20 >>= fun mac ->
@@ -261,7 +268,10 @@ let parse_datas buf n =
   let rec p_data buf acc = function
     | 0 when len buf = 0 -> return (List.rev acc)
     | 0 -> fail Underflow
-    | n -> decode_data buf >>= fun (x, buf) -> p_data buf (x :: acc) (pred n)
+    | n ->
+      decode_data buf >>= fun (x, buf) ->
+      guard (get_uint8 x 0 <> 0) LeadingZero >>= fun () ->
+      p_data buf (x :: acc) (pred n)
   in
   catch (BE.get_uint32 buf) 0 >>= fun cnt ->
   if cnt = Int32.of_int n then

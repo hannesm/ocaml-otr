@@ -128,6 +128,7 @@ let decrypt dh_keys symm version instances bytes =
             (dh_keys, symm, data, ret)
       end
   | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported underflow"
+  | Parser.Error Parser.LeadingZero -> fail "Malformed OTR data message: parser reported leading zero"
   | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
 let encrypt dh_keys symm reveal_macs version instances flags data =
