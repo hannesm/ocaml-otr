@@ -1,6 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: 1926a6d62b7d91517e3c5ea35a1f8b3b)
-version = "0.1.0"
+# DO NOT EDIT (digest: 4e14b94db7b8a3a1e49528845bca67ef)
+version = "0.1.1"
 description = "Off the record in OCaml"
 requires = "cstruct cstruct.syntax sexplib.syntax nocrypto"
 archive(byte) = "otr.cma"

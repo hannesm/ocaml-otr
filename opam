@@ -1,6 +1,6 @@
 opam-version: "1.2"
 name:         "otr"
-version:      "0.1.0"
+version:      "0.1.1"
 homepage:     "https://github.com/hannesm/ocaml-otr"
 dev-repo:     "https://github.com/hannesm/ocaml-otr.git"
 bug-reports:  "https://github.com/hannesm/ocaml-otr/issues"
