@@ -111,14 +111,14 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   safe_parse Parser.parse_dh_commit dh_commit >>= fun (gxenc, hgx) ->
   let gx = Crypto.crypt ~key:r ~ctr:0L gxenc in
   let hgx' = Crypto.hash gx in
-  guard (Nocrypto.Uncommon.Cs.equal hgx hgx') (Unknown "hgx does not match hgx'") >>= fun () ->
+  guard (Cstruct.equal hgx hgx') (Unknown "hgx does not match hgx'") >>= fun () ->
   safe_parse Parser.parse_gy gx >>= fun gx ->
   ( match Crypto.dh_shared dh_secret gx with
     | Some x -> return x
     | None -> fail (Unknown "invalid DH public key") ) >>= fun shared_secret ->
   let (ssid, c, c', m1, m2, m1', m2') = Crypto.derive_keys shared_secret in
   let mac' = Crypto.mac160 ~key:m2 enc_data in
-  guard (Nocrypto.Uncommon.Cs.equal mac mac') (Unknown "mac does not match mac'") >>= fun () ->
+  guard (Cstruct.equal mac mac') (Unknown "mac does not match mac'") >>= fun () ->
   let xb = Crypto.crypt ~key:c ~ctr:0L enc_data in
   (* split into pubb, keyidb, sigb *)
   safe_parse Parser.parse_signature_data xb >>= fun (pubb, keyidb, sigb) ->
@@ -144,7 +144,7 @@ let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   safe_parse Parser.decode_data signature >>= fun (enc_data, mac) ->
   guard (Cstruct.len mac = 20) (Unknown "mac has wrong length") >>= fun () ->
   let mymac = Crypto.mac160 ~key:m2' enc_data in
-  guard (Nocrypto.Uncommon.Cs.equal mac mymac) (Unknown "mac do not match") >>= fun () ->
+  guard (Cstruct.equal mac mymac) (Unknown "mac do not match") >>= fun () ->
   let dec = Crypto.crypt ~key:c' ~ctr:0L enc_data in
   (* split into puba keyida siga(Ma) *)
   safe_parse Parser.parse_signature_data dec >>= fun (puba, keyida, siga) ->
@@ -224,7 +224,7 @@ let handle_auth ctx bytes =
     | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
       (* same dh_key? -> retransmit REVEAL_SIG *)
       safe_parse Parser.parse_gy buf >|= fun gy' ->
-      if Nocrypto.Uncommon.Cs.equal gy gy' then
+      if Cstruct.equal gy gy' then
         (ctx, Some reveal_sig, [])
       else
         (ctx, None, [])

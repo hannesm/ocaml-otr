@@ -145,7 +145,7 @@ let handle_smp_3 g3a g2 g3 b3 pb qb data =
         let out = Builder.tlv ~data:[ rb ; cr ; d7 ] Packet.SMP_MESSAGE_4 in
         let rab = Crypto.pow_s ra b3 in
         let ret =
-          if Nocrypto.Uncommon.Cs.equal rab pab then
+          if Cstruct.equal rab pab then
             `SMP_success
           else
             `SMP_failure
@@ -168,7 +168,7 @@ let handle_smp_4 g3b pab qab a3 data =
     if Crypto.check_eq_logs cr g3b qab d7 rb 8 then
       let rab = Crypto.pow_s rb a3 in
       let ret =
-        if Nocrypto.Uncommon.Cs.equal rab pab then
+        if Cstruct.equal rab pab then
           `SMP_success
         else
           `SMP_failure

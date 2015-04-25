@@ -155,7 +155,7 @@ let check_proof g c d static =
   let m = group.Dh.p in
   let pub = Z.(powZ (succ one) dz * powZ gz cz mod m) in
   let c' = smp_hash static [ pub ] in
-  Uncommon.Cs.equal c' c
+  Cstruct.equal c' c
 
 let proof_equal_coords g2 g3 r y static =
   let r1, gr1 = gen_dh_secret ()
@@ -191,7 +191,7 @@ let check_equal_coords g2 g3 pb qb cp d1 d2 static =
       Z.(a * b * c mod group.Dh.p)
     in
     let cp' = smp_hash static [ a ; b ] in
-    Uncommon.Cs.equal cp' cp
+    Cstruct.equal cp' cp
   else
     false
 
@@ -226,7 +226,7 @@ let check_eq_logs c g p d r static =
       Z.(a * b mod group.Dh.p)
     in
     let c' = smp_hash static [ a ; b ] in
-    Uncommon.Cs.equal c c'
+    Cstruct.equal c c'
   else
     false
 

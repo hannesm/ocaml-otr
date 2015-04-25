@@ -77,7 +77,7 @@ let start_session _ =
     | MSGSTATE_ENCRYPTED enc_data -> enc_data.ssid, enc_data.high
     | _ -> assert false
   in
-  assert (Nocrypto.Uncommon.Cs.equal ssida ssidb) ;
+  assert (Cstruct.equal ssida ssidb) ;
   ( match higha, highb with
     | false, true -> ()
     | true, false -> ()

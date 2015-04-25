@@ -105,7 +105,7 @@ let decrypt dh_keys symm version instances bytes =
             let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
             guard (stop >= 0) "invalid data" >>= fun () ->
             let mac' = Crypto.sha1mac ~key:keyblock.recv_mac (Cstruct.sub bytes 0 stop) in
-            guard (Nocrypto.Uncommon.Cs.equal mac mac') "invalid mac" >|= fun () ->
+            guard (Cstruct.equal mac mac') "invalid mac" >|= fun () ->
             let dec = Cstruct.to_string (Crypto.crypt ~key:keyblock.recv_aes ~ctr:ctr' encdata) in
             let txt, data =
               let len = String.length dec in
