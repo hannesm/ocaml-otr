@@ -42,16 +42,17 @@ module State : sig
   type session
 
   (** an otr config *)
-  type config with sexp
+  type config = {
+    policies : policy list ;
+    versions : version list ;
+    dsa      : Nocrypto.Dsa.priv ;
+  } with sexp
+
+  val sexp_of_config_no_dsa : config -> Sexplib.Sexp.t
+  val config_no_dsa_of_sexp : Nocrypto.Dsa.priv -> Sexplib.Sexp.t -> config
 
   (** config constructor, given a version list, policy list and DSA private key *)
   val config : version list -> policy list -> Nocrypto.Dsa.priv -> config
-
-  (** enabled policies in a configuration *)
-  val policies : config -> policy list
-
-  (** enabled versions in a configuration *)
-  val versions : config -> version list
 
   (** returns the spoken protocol version in this session *)
   val version : session -> version

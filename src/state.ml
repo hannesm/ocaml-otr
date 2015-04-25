@@ -113,6 +113,38 @@ type config = {
   dsa      : Nocrypto.Dsa.priv ;
 } with sexp
 
+let sexp_of_config_no_dsa config =
+  let open Sexplib in
+  let kvs = [
+    ("policies" , sexp_of_list sexp_of_policy config.policies) ;
+    ("versions", sexp_of_list sexp_of_version config.versions)
+  ]
+  in
+  let data = Sexp.List (List.map (fun (k, v) -> (Sexp.List [Sexp.Atom k; v])) kvs) in
+  data
+
+let config_no_dsa_of_sexp dsa config =
+  let open Sexplib in
+  match config with
+  | Sexp.List l ->
+    (match
+       List.fold_left (fun (policies, versions) -> function
+           | Sexp.List [ Sexp.Atom "policies" ; ps ] ->
+             assert (policies = None) ;
+             let ps = list_of_sexp policy_of_sexp ps in
+             (Some ps, versions)
+           | Sexp.List [ Sexp.Atom "versions" ; vs ] ->
+             assert (versions = None) ;
+             let vs = list_of_sexp version_of_sexp vs in
+             (policies, Some vs)
+           | Sexp.List [ Sexp.Atom "dsa" ; _ ] -> (policies, versions)
+           | _ -> raise (Invalid_argument "unknown token in OTR config"))
+         (None, None) l
+     with
+     | Some policies, Some versions -> { policies ; versions ; dsa }
+     | _ -> raise (Invalid_argument "cannot parse OTR config") )
+  | _ -> raise (Invalid_argument "cannot parse OTR config")
+
 type state = {
   message_state : message_state ;
   auth_state    : auth_state ;
