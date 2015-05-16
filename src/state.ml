@@ -97,6 +97,14 @@ let policy_to_string = function
   | `ERROR_START_AKE      -> "error starts key exchange"
   | `REVEAL_MACS          -> "reveal mac keys"
 
+let string_to_policy = function
+  | "REQUIRE_ENCRYPTION"   -> Some `REQUIRE_ENCRYPTION
+  | "SEND_WHITESPACE_TAG"  -> Some `SEND_WHITESPACE_TAG
+  | "WHITESPACE_START_AKE" -> Some `WHITESPACE_START_AKE
+  | "ERROR_START_AKE"      -> Some `ERROR_START_AKE
+  | "REVEAL_MACS"          -> Some `REVEAL_MACS
+  | _ -> None
+
 let all_policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ; `REVEAL_MACS ]
 
 type version = [ `V2 | `V3 ] with sexp
@@ -104,6 +112,11 @@ type version = [ `V2 | `V3 ] with sexp
 let version_to_string = function
   | `V2 -> "version 2"
   | `V3 -> "version 3"
+
+let string_to_version = function
+  | "V2" -> Some `V2
+  | "V3" -> Some `V3
+  | _ -> None
 
 let all_versions = [ `V2 ; `V3 ]
 

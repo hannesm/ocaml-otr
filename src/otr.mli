@@ -26,6 +26,9 @@ module State : sig
   (** returns a string given a policy *)
   val policy_to_string : policy -> string
 
+  (** returns a policy option given a string *)
+  val string_to_policy : string -> policy option
+
   (** returns a list of all available policies *)
   val all_policies : policy list
 
@@ -34,6 +37,9 @@ module State : sig
 
   (** return a string given a version *)
   val version_to_string : version -> string
+
+  (** return a version option given a string *)
+  val string_to_version : string -> version option
 
   (** returns a list of all available versions *)
   val all_versions : version list
