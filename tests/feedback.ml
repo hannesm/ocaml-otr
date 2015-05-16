@@ -29,10 +29,10 @@ let start_session _ =
   Nocrypto.Rng.reseed buf ;
   let keya = Nocrypto.Dsa.generate `Fips1024 in
   let keyb = Nocrypto.Dsa.generate `Fips1024 in
-  let cfga = config all_versions all_policies keya in
-  let cfgb = config all_versions all_policies keyb in
-  let ctxa = new_session cfga () in
-  let ctxb = new_session cfgb () in
+  let cfga = config all_versions all_policies in
+  let cfgb = config all_versions all_policies in
+  let ctxa = new_session cfga keya () in
+  let ctxb = new_session cfgb keyb () in
   let ctxa, query = start_otr ctxa in
   let ctxb, out, msg = handle ctxb query in
   (* dh_commit *)

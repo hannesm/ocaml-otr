@@ -110,40 +110,7 @@ let all_versions = [ `V2 ; `V3 ]
 type config = {
   policies : policy list ;
   versions : version list ;
-  dsa      : Nocrypto.Dsa.priv ;
 } with sexp
-
-let sexp_of_config_no_dsa config =
-  let open Sexplib in
-  let kvs = [
-    ("policies" , sexp_of_list sexp_of_policy config.policies) ;
-    ("versions", sexp_of_list sexp_of_version config.versions)
-  ]
-  in
-  let data = Sexp.List (List.map (fun (k, v) -> (Sexp.List [Sexp.Atom k; v])) kvs) in
-  data
-
-let config_no_dsa_of_sexp dsa config =
-  let open Sexplib in
-  match config with
-  | Sexp.List l ->
-    (match
-       List.fold_left (fun (policies, versions) -> function
-           | Sexp.List [ Sexp.Atom "policies" ; ps ] ->
-             assert (policies = None) ;
-             let ps = list_of_sexp policy_of_sexp ps in
-             (Some ps, versions)
-           | Sexp.List [ Sexp.Atom "versions" ; vs ] ->
-             assert (versions = None) ;
-             let vs = list_of_sexp version_of_sexp vs in
-             (policies, Some vs)
-           | Sexp.List [ Sexp.Atom "dsa" ; _ ] -> (policies, versions)
-           | _ -> raise (Invalid_argument "unknown token in OTR config"))
-         (None, None) l
-     with
-     | Some policies, Some versions -> { policies ; versions ; dsa }
-     | _ -> raise (Invalid_argument "cannot parse OTR config") )
-  | _ -> raise (Invalid_argument "cannot parse OTR config")
 
 type state = {
   message_state : message_state ;
@@ -156,6 +123,7 @@ type session = {
   version : version ;
   state : state ;
   config : config ;
+  dsa : Nocrypto.Dsa.priv ;
   fragments : ((int * int) * string) ;
 } with sexp
 
@@ -183,7 +151,7 @@ let session_to_string s =
   version ^ smp_state ^
   instances
 
-let new_session config _ =
+let new_session config dsa _ =
   let state = {
     message_state = MSGSTATE_PLAINTEXT ;
     auth_state = AUTHSTATE_NONE ;
@@ -199,20 +167,21 @@ let new_session config _ =
     version ;
     state ;
     config ;
+    dsa ;
     fragments = ((0, 0), "")
   }
 
-let config versions policies dsa =
+let config versions policies =
   if List.length versions = 0 then
     invalid_arg "no versions supplied" ;
-  { versions ; policies ; dsa }
+  { versions ; policies }
 
 let policies cfg = cfg.policies
 let versions cfg = cfg.versions
 
 let rst_frag ctx = { ctx with fragments = ((0, 0), "") }
 
-let reset_session ctx = new_session ctx.config ()
+let reset_session ctx = new_session ctx.config ctx.dsa ()
 
 let is_encrypted ctx =
   match ctx.state.message_state with

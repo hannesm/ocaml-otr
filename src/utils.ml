@@ -10,5 +10,5 @@ let their_fingerprint ctx =
   | MSGSTATE_ENCRYPTED enc -> Some (fingerprint enc.their_dsa)
   | _ -> None
 
-let own_fingerprint config =
-  fingerprint (Nocrypto.Dsa.pub_of_priv config.dsa)
+let own_fingerprint dsa =
+  fingerprint (Nocrypto.Dsa.pub_of_priv dsa)

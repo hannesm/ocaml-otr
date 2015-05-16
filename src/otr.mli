@@ -45,14 +45,10 @@ module State : sig
   type config = {
     policies : policy list ;
     versions : version list ;
-    dsa      : Nocrypto.Dsa.priv ;
   } with sexp
 
-  val sexp_of_config_no_dsa : config -> Sexplib.Sexp.t
-  val config_no_dsa_of_sexp : Nocrypto.Dsa.priv -> Sexplib.Sexp.t -> config
-
   (** config constructor, given a version list, policy list and DSA private key *)
-  val config : version list -> policy list -> Nocrypto.Dsa.priv -> config
+  val config : version list -> policy list -> config
 
   (** returns the spoken protocol version in this session *)
   val version : session -> version
@@ -61,7 +57,7 @@ module State : sig
   val session_to_string : session -> string
 
   (** creates a new session given a configuration *)
-  val new_session : config -> unit -> session
+  val new_session : config -> Nocrypto.Dsa.priv -> unit -> session
 
   (** returns whether the session is in encryption state *)
   val is_encrypted : session -> bool
@@ -100,5 +96,5 @@ module Utils : sig
   val their_fingerprint : State.session -> string option
 
   (** returns the own fingerprint of the DSA key in the configuration *)
-  val own_fingerprint : State.config -> string
+  val own_fingerprint : Nocrypto.Dsa.priv -> string
 end

@@ -87,7 +87,7 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
     | None -> fail (Unknown "invalid DH public key")  ) >|= fun shared_secret ->
   let (ssid, c, c', m1, m2, m1', m2') = Crypto.derive_keys shared_secret in
   let keyidb = 1l in
-  let enc_sig = mac_sign_encrypt m1 c ctx.config.dsa gx gy keyidb in
+  let enc_sig = mac_sign_encrypt m1 c ctx.dsa gx gy keyidb in
   let mac = Crypto.mac160 ~key:m2 enc_sig in
   let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
   let auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, (ssid, c', m1', m2'), (dh_secret, gx), gy) in
@@ -126,7 +126,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   mac_verify m1 sigb pubb gx gy keyidb >|= fun () ->
   (* pick keyida *)
   let keyida = 1l in
-  let enc_sig = mac_sign_encrypt m1' c' ctx.config.dsa gy gx keyida in
+  let enc_sig = mac_sign_encrypt m1' c' ctx.dsa gy gx keyida in
   let m = Crypto.mac160 ~key:m2' enc_sig in
   let dh_keys = keys (dh_secret, gy) gx keyida in
   let high = false in

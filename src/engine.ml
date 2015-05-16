@@ -331,10 +331,10 @@ let handle_smp ctx call =
   | _ -> (ctx, None, [`Warning "need an encrypted session for SMP"])
 
 let start_smp ctx ?question secret =
-  handle_smp ctx (fun enc smp -> Smp.start_smp ctx.config enc smp ?question secret)
+  handle_smp ctx (fun enc smp -> Smp.start_smp ctx.dsa enc smp ?question secret)
 
 let abort_smp ctx =
   handle_smp ctx (fun _ smp -> Smp.abort_smp smp)
 
 let answer_smp ctx secret =
-  handle_smp ctx (fun enc smp -> Smp.handle_secret ctx.config enc smp secret)
+  handle_smp ctx (fun enc smp -> Smp.handle_secret ctx.dsa enc smp secret)
