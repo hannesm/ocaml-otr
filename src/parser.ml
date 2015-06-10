@@ -35,18 +35,22 @@ let string_split str idx =
 
 (* parse query string *)
 let parse_query_exn str =
-  let rec parse_v idx acc =
-    match String.get str idx with
-    | '2' -> parse_v (succ idx) (`V2 :: acc)
-    | '3' -> parse_v (succ idx) (`V3 :: acc)
-    | '?' ->
-      let _, post = string_split str idx in
-      (List.rev acc, post)
-    | _ -> parse_v (succ idx) acc
+  let parse_v acc = function
+    | '2' -> `V2 :: acc
+    | '3' -> `V3 :: acc
+    | _ -> acc
+  in
+  let parse idx =
+    let string = String.(sub str idx (length str - idx)) in
+    match Stringext.cut string ~on:"?" with
+    | None -> ([], None)
+    | Some (vs, post) ->
+      let versions = List.fold_left parse_v [] (Stringext.to_list vs) in
+      (List.rev versions, if post = "" then None else Some post)
   in
   match String.(get str 0, get str 1) with
-  | '?', 'v' -> parse_v 2 []
-  | 'v', _ -> parse_v 1 []
+  | '?', 'v' -> parse 2
+  | 'v', _ -> parse 1
   | _ -> raise_unknown "no usable version found"
 
 let parse_query = catch parse_query_exn
