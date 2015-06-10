@@ -20,5 +20,6 @@ depends: [
   "type_conv"
   "sexplib"
   "nocrypto" {>= "0.3.0"}
+  "stringext"
 ]
 available: [ ocaml-version >= "4.01.0" ]
