@@ -51,23 +51,14 @@ let parse_query_exn str =
 
 let parse_query = catch parse_query_exn
 
-let re_match_exn re relen data =
-  let idx = Str.search_forward re data 0 in
-  match string_split data idx with
-  | pre, Some data -> (pre, String.(sub data relen (length data - relen)))
-  | _ -> raise_unknown "re matched, but no data found"
-
-let re_match (re, relen) data =
-  try Ok (re_match_exn re relen data) with _ -> Error (Unknown "parse failed")
+let mark_match on data =
+  match Stringext.cut data ~on with
+  | Some ("", post) -> Ok (None, post)
+  | Some (pre, post) -> Ok (Some pre, post)
+  | None -> Error (Unknown "parse failed")
 
 let otr_mark, otr_err_mark, otr_v2_frag, otr_v3_frag, otr_query_mark, tag_prefix =
-  let re str = (Str.regexp_string str, String.length str) in
-  (re "?OTR:",
-   re "?OTR Error:",
-   re "?OTR,",
-   re "?OTR|",
-   re "?OTR",
-   re " \t  \t\t\t\t \t \t \t ")
+  ("?OTR:", "?OTR Error:", "?OTR,", "?OTR|", "?OTR", " \t  \t\t\t\t \t \t \t ")
 
 open Sexplib.Conv
 
@@ -141,34 +132,34 @@ let parse_fragment_v3_exn data =
 let parse_fragment_v3 = catch parse_fragment_v3_exn
 
 let classify_input bytes =
-  match re_match otr_v2_frag bytes with
+  match mark_match otr_v2_frag bytes with
   | Ok (pre, data) ->
     ( match parse_fragment data with
       | Ok data when pre = None -> `Fragment_v2 data
       | Ok _ -> `ParseError "Malformed v2 fragment (predata)"
       | Error _ -> `ParseError "Malformed v2 fragment" )
-  | Error _ -> match re_match otr_v3_frag bytes with
+  | Error _ -> match mark_match otr_v3_frag bytes with
     | Ok (pre, data) ->
       ( match parse_fragment_v3 data with
         | Ok data when pre = None -> `Fragment_v3 data
         | Ok _ -> `ParseError "Malformed v3 fragment (predata)"
         | Error _ -> `ParseError "Malformed v3 fragment" )
-    | Error _ -> match re_match otr_mark bytes with
+    | Error _ -> match mark_match otr_mark bytes with
       | Ok (pre, data) ->
         ( match parse_data data with
           | Ok (data, post) when pre = None && post = None -> `Data data
           | Ok _ -> `ParseError "Malformed OTR data (pre/postdata)"
           | Error _ -> `ParseError "Malformed OTR data message" )
-      | Error _ -> match re_match otr_err_mark bytes with
+      | Error _ -> match mark_match otr_err_mark bytes with
         | Ok (pre, data) when pre = None -> `Error data
         | Ok _ -> `ParseError "Malformed Error received (predata)"
-        | Error _ ->  match re_match otr_query_mark bytes with
+        | Error _ ->  match mark_match otr_query_mark bytes with
           | Ok (pre, data) ->
             ( match parse_query data with
               | Ok (versions, _) when pre = None -> `Query versions
               | Ok _ -> `ParseError "Malformed OTR query (pre/postdata)"
               | Error _ -> `ParseError "Malformed OTR query" )
-          | Error _ -> match re_match tag_prefix bytes with
+          | Error _ -> match mark_match tag_prefix bytes with
             | Ok (pre, data) ->
               ( match parse_plain_tag data with
                 | Ok (versions, post) when post = None -> `PlainTag (versions, pre)
