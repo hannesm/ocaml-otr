@@ -19,19 +19,8 @@ let catch f x =
   | Parser_error err   -> fail err
   | Invalid_argument _ -> fail Underflow
 
-(* String splitting at index idx *)
-let string_split str idx =
-  if idx > 0 then
-    let pre = Some (String.sub str 0 idx)
-    and idx' = succ idx
-    and len = String.length str
-    in
-    if idx' < len then
-      (pre, Some (String.(sub str idx' (len - idx'))))
-    else
-      (pre, None)
-  else
-    (None, Some str)
+let maybe a =
+  if a = "" then None else Some a
 
 (* parse query string *)
 let parse_query_exn str =
@@ -46,7 +35,7 @@ let parse_query_exn str =
     | None -> ([], None)
     | Some (vs, post) ->
       let versions = List.fold_left parse_v [] (Stringext.to_list vs) in
-      (List.rev versions, if post = "" then None else Some post)
+      (List.rev versions, maybe post)
   in
   match String.(get str 0, get str 1) with
   | '?', 'v' -> parse 2
@@ -57,8 +46,7 @@ let parse_query = catch parse_query_exn
 
 let mark_match on data =
   match Stringext.cut data ~on with
-  | Some ("", post) -> Ok (None, post)
-  | Some (pre, post) -> Ok (Some pre, post)
+  | Some (pre, post) -> Ok (maybe pre, post)
   | None -> Error (Unknown "parse failed")
 
 let otr_mark, otr_err_mark, otr_v2_frag, otr_v3_frag, otr_query_mark, tag_prefix =
@@ -77,21 +65,19 @@ type ret = [
   | `Fragment_v3 of (int32 * int32) * (int * int) * string
 ] with sexp
 
-let parse_data_exn data =
-  match string_split data (String.index data '.') with
-  | Some data, post ->
+let parse_data data =
+  match Stringext.split ~max:2 data ~on:'.' with
+  | [] -> fail (Unknown "empty OTR message")
+  | data :: rest ->
     let b64data = Cstruct.of_string data in
-    (Nocrypto.Base64.decode b64data, post)
-  | None, _ -> raise_unknown "empty OTR message"
-
-let parse_data = catch parse_data_exn
+    return (Nocrypto.Base64.decode b64data, maybe (String.concat "." rest))
 
 let parse_plain_tag_exn data =
   let len = String.length data in
   let rec find_mark idx acc =
     if len - idx < 8 then
-      let _, post = string_split data idx in
-      (List.rev acc, post)
+      let post = Stringext.drop data idx in
+      (List.rev acc, maybe post)
     else
       match String.sub data idx 8 with
       | "  \t\t  \t " -> find_mark (idx + 8) (`V2 :: acc)
@@ -104,31 +90,27 @@ let parse_plain_tag = catch parse_plain_tag_exn
 
 
 let parse_fragment_exn data =
-  match string_split data (String.index data ',') with
-  | Some k, Some data ->
-    ( match string_split data (String.index data ',') with
-      | Some n, Some piece ->
-          let k = int_of_string k in
-          let n = int_of_string n in
-          assert (k > 0 && k <= 65535 ) ;
-          assert (n > 0 && n <= 65535 && k <= n) ;
-          assert (String.length piece > 0) ;
-          let last = pred (String.length piece) in
-          assert (String.index piece ',' = last) ;
-          ((k, n), String.sub piece 0 last)
-      | _ -> raise_unknown "invalid fragment n" )
-  | _ -> raise_unknown "invalid fragment k"
+  match Stringext.split ~max:4 data ~on:',' with
+  | k :: n :: piece :: rest ->
+    let k = int_of_string k in
+    let n = int_of_string n in
+    assert (k > 0 && k <= 65535 ) ;
+    assert (n > 0 && n <= 65535 && k <= n) ;
+    assert (String.length piece > 0) ;
+    assert (String.length (String.concat "" rest) = 0) ;
+    ((k, n), piece)
+  | _ -> raise_unknown "invalid fragment"
 
 let parse_fragment = catch parse_fragment_exn
 
 let parse_fragment_v3_exn data =
-  match string_split data (String.index data '|') with
-  | Some sender_instance, Some data ->
-    ( match string_split data (String.index data ',') with
-      | Some receiver_instance, Some data ->
+  match Stringext.split ~max:2 data ~on:'|' with
+  | sender_instance :: data ->
+    ( match Stringext.split ~max:2 (String.concat "|" data) ~on:',' with
+      | receiver_instance :: data ->
         let sender_instance = Scanf.sscanf sender_instance "%lx" (fun x -> x) in
         let receiver_instance = Scanf.sscanf receiver_instance "%lx" (fun x -> x) in
-        let kn, piece = parse_fragment_exn data in
+        let kn, piece = parse_fragment_exn (String.concat "," data) in
         ((sender_instance, receiver_instance), kn, piece)
       | _ -> raise_unknown "invalid fragment (receiver_instance)" )
   | _ -> raise_unknown "invalid fragment (sender_instance)"
