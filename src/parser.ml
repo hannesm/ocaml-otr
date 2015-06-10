@@ -65,12 +65,14 @@ type ret = [
   | `Fragment_v3 of (int32 * int32) * (int * int) * string
 ] with sexp
 
-let parse_data data =
+let parse_data_exn data =
   match Stringext.split ~max:2 data ~on:'.' with
-  | [] -> fail (Unknown "empty OTR message")
+  | [] -> raise_unknown "empty OTR message"
   | data :: rest ->
     let b64data = Cstruct.of_string data in
-    return (Nocrypto.Base64.decode b64data, maybe (String.concat "." rest))
+    (Nocrypto.Base64.decode b64data, maybe (String.concat "." rest))
+
+let parse_data = catch parse_data_exn
 
 let parse_plain_tag_exn data =
   let len = String.length data in
