@@ -7,20 +7,17 @@ let (<+>) = Nocrypto.Uncommon.Cs.(<+>)
 let query_message versions =
   let is v = List.mem v versions in
   match is `V2, is `V3 with
-    | true, true -> "?OTRv23?"
-    | true, false -> "?OTRv2?"
-    | false, true -> "?OTRv3?"
-    | false, false -> "?OTRv?"
+    | true, true -> otr_prefix ^ "v23?"
+    | true, false -> otr_prefix ^ "v2?"
+    | false, true -> otr_prefix ^ "v3?"
+    | false, false -> otr_prefix ^ "v?"
 
 let tag versions =
   let is v = List.mem v versions in
-  let prefix = " \t  \t\t\t\t \t \t \t  " in
-  let v2 = "  \t\t  \t " in
-  let v3 = "  \t\t  \t\t" in
   match is `V2, is `V3 with
-    | true, true -> prefix ^ v3 ^ v2
-    | true, false -> prefix ^ v2
-    | false, true -> prefix ^ v3
+    | true, true -> tag_prefix ^ tag_v3 ^ tag_v2
+    | true, false -> tag_prefix ^ tag_v2
+    | false, true -> tag_prefix ^ tag_v3
     | false, false -> ""
 
 let header version instances typ =

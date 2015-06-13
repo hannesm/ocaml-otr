@@ -155,7 +155,7 @@ let wrap_b64string = function
   | None -> None
   | Some m ->
     let encoded = Nocrypto.Base64.encode m in
-    Some ("?OTR:" ^ Cstruct.to_string encoded ^ ".")
+    Some (otr_mark ^ Cstruct.to_string encoded ^ ".")
 
 let handle_data ctx bytes =
   match ctx.state.message_state with
@@ -167,7 +167,7 @@ let handle_data ctx bytes =
           return (ctx, None, [])
         else
           return (ctx,
-                  Some "?OTR Error: ignoring unreadable message",
+                  Some (otr_err_mark ^ " ignoring unreadable message"),
                   [`Warning "received encrypted data while in plaintext mode, ignoring unreadable message"])
       | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
       | Ake.Error Ake.VersionMismatch ->
@@ -251,14 +251,14 @@ let handle_input ctx = function
         (ctx, wrap_b64string out, warn @ recv text)
       | Error e ->
         (reset_session ctx,
-         Some ("?OTR Error: " ^ e),
-         [`Warning ("OTR Error: " ^ e)] @ recv text) )
+         Some (otr_err_mark ^ e),
+         [`Warning e] @ recv text) )
   | `Query versions ->
     ( match commit ctx versions with
       | Ok (ctx, out) -> (ctx, wrap_b64string out, [])
       | Error e -> (reset_session ctx,
-                    Some ("?OTR Error: " ^ e),
-                    [`Warning ("OTR Error: " ^ e)] ) )
+                    Some (otr_err_mark ^ e),
+                    [`Warning e] ) )
   | `Error message ->
     let out = handle_error ctx in
     (reset_session ctx, out,
@@ -269,18 +269,18 @@ let handle_input ctx = function
         (ctx, out, warn)
       | Error e ->
         (reset_session ctx,
-         Some ("?OTR Error: " ^ e),
-         [ `Warning ("OTR error " ^ e)]) )
+         Some (otr_err_mark ^ e),
+         [ `Warning e]) )
   | `String message ->
     let user = handle_cleartext ctx in
     (ctx, None, user @ recv (Some message))
   | `ParseError err ->
     (reset_session ctx,
-     Some ("?OTR Error: " ^ err),
-     [`Warning (err ^ " while processing OTR message")])
+     Some (otr_err_mark ^ err),
+     [`Warning (err ^ " while parsing OTR message")])
   | `Fragment_v2 _ | `Fragment_v3 _ ->
     (reset_session ctx,
-     Some ("?OTR Error: unexpected recursive fragment"),
+     Some (otr_err_mark ^ "unexpected recursive fragment"),
      [`Warning "ignoring unexpected recursive fragment"])
 
 let handle_fragments ctx = function
@@ -288,12 +288,12 @@ let handle_fragments ctx = function
     if ctx.version = `V2 then
       return (handle_fragment ctx kn piece)
     else
-      fail ("?OTR Error: wrong version in fragment")
+      fail "wrong version in V2 fragment"
   | `Fragment_v3 (instances, kn, piece) ->
     if ctx.version = `V3 then
       return (handle_fragment_v3 ctx instances kn piece)
     else
-      fail ("?OTR Error: wrong version in fragment")
+      fail "wrong version in V3 fragment"
 
 (* session -> string -> (session * to_send * ret) *)
 let handle ctx bytes =
@@ -303,8 +303,8 @@ let handle ctx bytes =
       | Ok (ctx, None)   -> (ctx, None, [])
       | Ok (ctx, Some x) -> handle_input ctx (Parser.classify_input x)
       | Error txt -> (ctx,
-                      Some ("?OTR Error: " ^ txt),
-                      [`Warning ("Error: " ^ txt)]) )
+                      Some (otr_err_mark ^ txt),
+                      [`Warning txt]) )
     | x -> handle_input (rst_frag ctx) x
 
 let handle_smp ctx call =

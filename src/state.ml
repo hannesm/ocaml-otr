@@ -205,3 +205,11 @@ let their_dsa ctx =
   match ctx.state.message_state with
   | MSGSTATE_ENCRYPTED enc_data -> Some enc_data.their_dsa
   | _ -> None
+
+let tag_prefix = " \t  \t\t\t\t \t \t \t  "
+and tag_v2 = "  \t\t  \t "
+and tag_v3 = "  \t\t  \t\t"
+and otr_prefix = "?OTR"
+
+let otr_mark, otr_err_mark, otr_v2_frag, otr_v3_frag =
+  (otr_prefix ^ ":", otr_prefix ^ " Error:", otr_prefix ^ ",", otr_prefix ^ "|")

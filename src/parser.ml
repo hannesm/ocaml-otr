@@ -49,9 +49,6 @@ let mark_match on data =
   | Some (pre, post) -> Ok (maybe pre, post)
   | None -> Error (Unknown "parse failed")
 
-let otr_mark, otr_err_mark, otr_v2_frag, otr_v3_frag, otr_query_mark, tag_prefix =
-  ("?OTR:", "?OTR Error:", "?OTR,", "?OTR|", "?OTR", " \t  \t\t\t\t \t \t \t  ")
-
 open Sexplib.Conv
 
 type ret = [
@@ -82,8 +79,8 @@ let parse_plain_tag_exn data =
       (List.rev acc, maybe post)
     else
       match String.sub data idx 8 with
-      | "  \t\t  \t " -> find_mark (idx + 8) (`V2 :: acc)
-      | "  \t\t  \t\t" -> find_mark (idx + 8) (`V3 :: acc)
+      | x when x = tag_v2 -> find_mark (idx + 8) (`V2 :: acc)
+      | x when x = tag_v3 -> find_mark (idx + 8) (`V3 :: acc)
       | _ -> find_mark (idx + 8) acc
   in
   find_mark 0 []
@@ -141,7 +138,7 @@ let classify_input bytes =
       | Error _ -> match mark_match otr_err_mark bytes with
         | Ok (pre, data) when pre = None -> `Error data
         | Ok _ -> `ParseError "Malformed Error received (predata)"
-        | Error _ ->  match mark_match otr_query_mark bytes with
+        | Error _ ->  match mark_match otr_prefix bytes with
           | Ok (pre, data) ->
             ( match parse_query data with
               | Ok (versions, _) when pre = None -> `Query versions
