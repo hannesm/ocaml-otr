@@ -148,7 +148,7 @@ let classify_input bytes =
             | Ok (pre, data) ->
               ( match parse_plain_tag data with
                 | Ok (versions, None) -> `PlainTag (versions, pre)
-                | Ok _ -> `ParseError ("Malformed Tag (postdata)")
+                | Ok _ -> `ParseError "Malformed Tag (postdata)"
                 | Error _ -> `ParseError "Malformed tag" )
             | Error _ -> `String bytes
 
