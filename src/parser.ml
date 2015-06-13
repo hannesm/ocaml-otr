@@ -50,7 +50,7 @@ let mark_match on data =
   | None -> Error (Unknown "parse failed")
 
 let otr_mark, otr_err_mark, otr_v2_frag, otr_v3_frag, otr_query_mark, tag_prefix =
-  ("?OTR:", "?OTR Error:", "?OTR,", "?OTR|", "?OTR", " \t  \t\t\t\t \t \t \t ")
+  ("?OTR:", "?OTR Error:", "?OTR,", "?OTR|", "?OTR", " \t  \t\t\t\t \t \t \t  ")
 
 open Sexplib.Conv
 
@@ -150,8 +150,8 @@ let classify_input bytes =
           | Error _ -> match mark_match tag_prefix bytes with
             | Ok (pre, data) ->
               ( match parse_plain_tag data with
-                | Ok (versions, post) when post = None -> `PlainTag (versions, pre)
-                | Ok _ -> `ParseError "Malformed Tag (postdata)"
+                | Ok (versions, None) -> `PlainTag (versions, pre)
+                | Ok _ -> `ParseError ("Malformed Tag (postdata)")
                 | Error _ -> `ParseError "Malformed tag" )
             | Error _ -> `String bytes
 
