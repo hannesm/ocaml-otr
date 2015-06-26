@@ -60,8 +60,7 @@ let data_keys data high =
   let recvmac = Hash.digest `SHA1 recvaes in
   (sendaes, sendmac, recvaes, recvmac)
 
-module Counter = Cipher_block.Counters.Inc_BE
-module AES_CTR = Cipher_block.AES.CTR (Counter)
+module AES_CTR = Cipher_block.AES.CTR
 
 let crypt ~key ~ctr msg =
   let ctr =
