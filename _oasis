@@ -44,3 +44,13 @@ Executable "feedback"
 Test it
   Command         : $test_runner -runner sequential
   Run            $: flag(tests)
+
+Document api
+  Title: Documentation and API reference
+  Abstract: OCaml-OTR implements Off the record in OCaml. It consists
+            of a pure core.
+  Type: ocamlbuild (0.3)
+  BuildTools+: ocamldoc
+  XOcamlbuildPath: doc
+  XOcamlbuildModules: src/Otr
+  Install: false
