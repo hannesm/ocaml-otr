@@ -89,7 +89,7 @@ let sha1mac = Hash.mac `SHA1
 let group = Dh.Group.oakley_5
 
 let gen_dh_secret () =
-  Dh.gen_secret group
+  Dh.gen_key group
 
 let dh_shared_exn = Dh.shared group
 
