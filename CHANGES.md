@@ -1,3 +1,6 @@
+master:
+* add `update_config` function to update a session with given parameters
+
 0.2.0 (2015-07-02):
 * config contains policies and versions, but no longer the DSA key
 * DSA key needs to be provided separately in new_session

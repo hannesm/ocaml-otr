@@ -56,6 +56,11 @@ module State : sig
   (** config constructor, given a version list, policy list and DSA private key *)
   val config : version list -> policy list -> config
 
+  (** [update_config config session] is [session], the [session]
+  adjusted to the [config].  The [session] might not conform to the
+  config anymore! *)
+  val update_config : config -> session -> session
+
   (** returns the spoken protocol version in this session *)
   val version : session -> version
 

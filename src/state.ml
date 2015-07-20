@@ -140,6 +140,8 @@ type session = {
   fragments : ((int * int) * string) ;
 } with sexp
 
+let update_config config ctx = { ctx with config }
+
 let version x = x.version
 
 let reveal_macs session =
