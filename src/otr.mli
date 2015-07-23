@@ -1,7 +1,35 @@
+(** Off-the-Record, in pure OCaml
 
+    Off-the-Record (OTR) ({{:https://otr.cypherpunks.ca/otr-wpes.pdf}
+    developed by Goldberg et al.}) is a cryptographic protocol used in
+    instant messaging.  It provides both authentication (using
+    long-term 1024 bit DSA keys), and encryption (using AES 128 in
+    counter mode).  An authenticated Diffie-Hellman key exchange (with
+    1536 bit {{:https://tools.ietf.org/html/rfc3526#section-2}Oakley5}
+    group) establishes the shared secrets (providing forward secrecy).
+
+    The
+    {{:https://en.wikipedia.org/wiki/Socialist_millionaire}socialist
+    millionaire problem} (SMP) allows in-band verification of the
+    long-term DSA keys using a shared secret and zero knowledge
+    proofs.
+
+    This implementation covers both protocol
+    {{:https://otr.cypherpunks.ca/Protocol-v2-3.1.0.html}version 2}
+    and {{:https://otr.cypherpunks.ca/Protocol-v3-4.0.0.html}version
+    3}, and implements the socialist millionairs problem.  {!State}
+    defines configuration and types, {!Engine} processing of incoming
+    and outgoing messages as well as initiation and teardown of
+    sessions and socialist millionairs problem, and {!Utils} provides
+    basic fingerprint utilities as defined in the OTR
+    specification. *)
+
+(** States and types *)
 module State : sig
 
-  (** possible return values from engine functions *)
+  (** {1 Type definitions and predicates} *)
+
+  (** Return values of functions in the {!Engine} module. *)
   type ret = [
     | `Warning of string
     | `Received_error of string
@@ -14,7 +42,7 @@ module State : sig
     | `SMP_failure
   ]
 
-  (** OTR configurable policies *)
+  (** OTR policies, as defined in the protocol. *)
   type policy = [
     | `REQUIRE_ENCRYPTION
     | `SEND_WHITESPACE_TAG
@@ -23,89 +51,150 @@ module State : sig
     | `REVEAL_MACS
   ] with sexp
 
-  (** returns a string given a policy *)
+  (** [policy_to_string policy] is [string], the string representation
+      of the given [policy]. *)
   val policy_to_string : policy -> string
 
-  (** returns a policy option given a string *)
+  (** [string_to_policy string] is [policy], the [policy] matching the
+      string ([None] if none matches). *)
   val string_to_policy : string -> policy option
 
-  (** returns a list of all available policies *)
+  (** [all_policies] returns a list of all defined policies. *)
   val all_policies : policy list
 
-  (** OTR protocol versions *)
+  (** OTR protocol versions supported by this library *)
   type version = [ `V2 | `V3 ] with sexp
 
-  (** return a string given a version *)
+  (** [version_to_string version] is [string], the string
+     representation of the [version]. *)
   val version_to_string : version -> string
 
-  (** return a version option given a string *)
+  (** [string_to_version string] is [version], the [version] matching
+      the string ([None] if none matches). *)
   val string_to_version : string -> version option
 
-  (** returns a list of all available versions *)
+  (** [all_versions] returns a list of all supported versions. *)
   val all_versions : version list
 
-  (** some otr session *)
-  type session
-
-  (** an otr config *)
+  (** OTR configuration consisting of a set of policies and versions. *)
   type config = {
     policies : policy list ;
     versions : version list ;
   } with sexp
 
-  (** config constructor, given a version list, policy list and DSA private key *)
+  (** [config versions policies] is [config], the configuration with
+      the given [versions] and [policies]. *)
   val config : version list -> policy list -> config
 
-  (** [update_config config session] is [session], the [session]
-  adjusted to the [config].  The [session] might not conform to the
-  config anymore! *)
-  val update_config : config -> session -> session
+  (** An abstract OTR session *)
+  type session
 
-  (** returns the spoken protocol version in this session *)
-  val version : session -> version
-
-  (** string representation of a session *)
+  (** [session_to_string session] is [string], the string
+      representation of the [session]. *)
   val session_to_string : session -> string
 
-  (** creates a new session given a configuration *)
-  val new_session : config -> Nocrypto.Dsa.priv -> unit -> session
+  (** [version session] is [version], the current active protocol
+      version of this [session]. *)
+  val version : session -> version
 
-  (** returns whether the session is in encryption state *)
+  (** [is_encrypted session] is [true] if the session is
+      established. *)
   val is_encrypted : session -> bool
 
-  (** returns the DSA public key used by the communication partner (if session is encrypted) *)
+  (** [their_dsa session] is [dsa], the public DSA key used by the
+      communication partner (if the session is established). *)
   val their_dsa : session -> Nocrypto.Dsa.pub option
+
+  (** [new_session configuration dsa ()] is [session], a fresh session given
+      the [configuration] and [dsa] private key. *)
+  val new_session : config -> Nocrypto.Dsa.priv -> unit -> session
+
+  (** [update_config config session] is [session], the [session]
+      adjusted to the [config].  Note: the [session] might not conform
+      to the config anymore! *)
+  val update_config : config -> session -> session
 end
 
+(** Message processing *)
 module Engine : sig
-  (** [start_otr ctx] is [ctx, out] where [out] should be sent to the communication partner. It initiates an OTR session. *)
+
+  (** {1 Message processing} *)
+
+  (** Either when an OTR session should be established, or if a
+      message containing OTR data is received, the corresponding
+      function should be called to decrypt or encrypt the OTR data, or
+      initiate a handshake. *)
+
+  (** [start_otr session] is [session', out], which initiates an OTR
+      session. [out] should be sent to the communication partner,
+      [session'] used in further API calls.  The [session] is reset,
+      and [out] contains an OTR query message (content depends on the
+      configured {!State.version}). *)
   val start_otr : State.session -> State.session * string
 
-  (** [send_otr ctx message] is [ctx, out, user] where [out] should be sent to the communication partner and [user] be presented to the user. The message is encrypted with the keys inside the session. *)
+  (** [send_otr session message] is [session', out, user_data], where
+      [out] should be sent to the communication partner and
+      [user_data] be presented to the user.  Depending on the current
+      [session] state and configured {!State.policy}, [out] can be
+      encrypted, or the initiation of an OTR session, or the plain
+      text.  [session'] should be used in subsequent API calls.
+      [user_data] contains more information on what happened with
+      [message] (whether it was sent in plain, encrypted, or not at
+      all). *)
   val send_otr : State.session -> string ->
     State.session * string option *
     [ `Warning of string | `Sent of string | `Sent_encrypted of string ]
 
-  (** [end_otr ctx] is [ctx, out] where [out] should be sent to the communication partner. It ends the session. *)
+  (** [end_otr session] is [session', out], which ends the OTR
+      session. [out] should be sent to the communication partner,
+      [session'] should be used in subsequent calls. *)
   val end_otr : State.session -> State.session * string option
 
-  (** [handle ctx data] is [ctx, out, ret] where [out] should be sent to the communication partner, [ret] presented to the user. It decrypts and handles the data which came from the communication partner. *)
+  (** [handle session data] is [session', out, ret], which handles
+      received data. [out] should be sent to the communication partner
+      (might contain data to complete a handshake), [ret] should be
+      presented to the user. [handle] potentially decrypts the
+      incoming message, or proceeds in the handshake setup.
+      [session'] should be used in subsequent calls. *)
   val handle : State.session -> string -> State.session * string option * State.ret list
 
-  (** [start_smp ctx ?question secret] is [ctx, out, ret] where [out] should be sent to the communication partner, [ret] presented to the user. It starts the socialists millionairs problem with the shared [secret] and possibly a [question]. *)
+  (** [start_smp session ~question shared_secret] is [session', out,
+      ret], which starts the
+      {{:https://en.wikipedia.org/wiki/Socialist_millionaire}
+      socialist millionairs problem} if the [session] is already
+      established, using potentially the [question] and
+      [shared_secret]. [out] should be sent to the communication
+      partner, and [ret] presented to the user.  [session'] should be
+      used in subsequent calls. *)
   val start_smp : State.session -> ?question:string -> string -> State.session * string option * State.ret list
 
-  (** [abort_smp ctx] is [ctx, out, ret] where [out] should be sent to the communication patner, [ret] presented to the user. It aborts a running socialist millionairs problem. *)
+  (** [abort_smp session] is [session', out, ret], which aborts an
+      unfinished SMP.  [out] should be sent to the communication
+      patner, and [ret] presented to the user.  [session'] should be used
+      in subsequent calls. *)
   val abort_smp : State.session -> State.session * string option * State.ret list
 
-  (** [answer_smp ctx secret] is [ctx, out, ret] where [out] should be sent to the communication partner, [ret] presented to the user. The [secret] is compared with the communication partners secret. *)
+  (** [answer_smp session secret] is [session', out, ret], which
+      answers the SMP.  [out] should be sent to the communication
+      partner, and [ret] presented to the user. The given [secret] is
+      compared (in a zero-knowledge style) with the communication
+      partners secret.  [session'] should be used in subsequent
+      calls. *)
   val answer_smp : State.session -> string -> State.session * string option * State.ret list
 end
 
+(** Utilities *)
 module Utils : sig
-  (** returns the fingerprint of the communication partner if the session is encrypted *)
+  (** {1 Fingerprint Utilities} *)
+
+  (** An OTR fingerprint is the [`SHA1] hash of the public key
+      prepended with the key type. *)
+
+  (** [their_fingerprint session] is [fp], the fingerprint of the
+      communication partner ([None] if no session is established).  *)
   val their_fingerprint : State.session -> string option
 
-  (** returns the own fingerprint of the DSA key in the configuration *)
+  (** [own_fingerprint dsa] is [fp], the fingerprint of the private
+      DSA key. *)
   val own_fingerprint : Nocrypto.Dsa.priv -> string
 end
