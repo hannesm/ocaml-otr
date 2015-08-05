@@ -30,11 +30,11 @@ let parse_query_exn str =
     | _ -> acc
   in
   let parse idx =
-    let string = String.(sub str idx (length str - idx)) in
-    match Stringext.cut string ~on:"?" with
+    let string = Astring.String.slice ~start:idx str in
+    match Astring.String.cut ~sep:"?" string with
     | None -> ([], None)
     | Some (vs, post) ->
-      let versions = List.fold_left parse_v [] (Stringext.to_list vs) in
+      let versions = Astring.String.fold_left parse_v [] vs in
       (List.rev versions, maybe post)
   in
   match String.(get str 0, get str 1) with
@@ -44,8 +44,8 @@ let parse_query_exn str =
 
 let parse_query = catch parse_query_exn
 
-let mark_match on data =
-  match Stringext.cut data ~on with
+let mark_match sep data =
+  match Astring.String.cut ~sep data with
   | Some (pre, post) -> Ok (maybe pre, post)
   | None -> Error (Unknown "parse failed")
 
@@ -63,33 +63,32 @@ type ret = [
 ] with sexp
 
 let parse_data_exn data =
-  match Stringext.split ~max:2 data ~on:'.' with
-  | [] -> raise_unknown "empty OTR message"
-  | data :: rest ->
+  match Astring.String.cut ~sep:"." data with
+  | None -> raise_unknown "empty OTR message"
+  | Some (data, rest) ->
     let b64data = Cstruct.of_string data in
-    (Nocrypto.Base64.decode b64data, maybe (String.concat "." rest))
+    (Nocrypto.Base64.decode b64data, maybe rest)
 
 let parse_data = catch parse_data_exn
 
 let parse_plain_tag_exn data =
-  let len = String.length data in
-  let rec find_mark idx acc =
-    if len - idx < 8 then
-      let post = Stringext.drop data idx in
-      (List.rev acc, maybe post)
+  let rec find_mark str acc =
+    if String.length str < 8 then
+      (List.rev acc, maybe str)
     else
-      match String.sub data idx 8 with
-      | x when x = tag_v2 -> find_mark (idx + 8) (`V2 :: acc)
-      | x when x = tag_v3 -> find_mark (idx + 8) (`V3 :: acc)
-      | _ -> find_mark (idx + 8) acc
+      let rest = Astring.String.slice ~start:8 str in
+      match Astring.String.slice ~stop:8 str with
+      | x when x = tag_v2 -> find_mark rest (`V2 :: acc)
+      | x when x = tag_v3 -> find_mark rest (`V3 :: acc)
+      | _ -> find_mark rest acc
   in
-  find_mark 0 []
+  find_mark data []
 
 let parse_plain_tag = catch parse_plain_tag_exn
 
 
 let parse_fragment_exn data =
-  match Stringext.split ~max:4 data ~on:',' with
+  match Astring.String.cuts ~sep:"," data with
   | k :: n :: piece :: rest ->
     let k = int_of_string k in
     let n = int_of_string n in
@@ -103,16 +102,16 @@ let parse_fragment_exn data =
 let parse_fragment = catch parse_fragment_exn
 
 let parse_fragment_v3_exn data =
-  match Stringext.split ~max:2 data ~on:'|' with
-  | sender_instance :: data ->
-    ( match Stringext.split ~max:2 (String.concat "|" data) ~on:',' with
-      | receiver_instance :: data ->
+  match Astring.String.cut ~sep:"|" data with
+  | Some (sender_instance, data) ->
+    ( match Astring.String.cut ~sep:"," data with
+      | Some (receiver_instance, data) ->
         let sender_instance = Scanf.sscanf sender_instance "%lx" (fun x -> x) in
         let receiver_instance = Scanf.sscanf receiver_instance "%lx" (fun x -> x) in
-        let kn, piece = parse_fragment_exn (String.concat "," data) in
+        let kn, piece = parse_fragment_exn data in
         ((sender_instance, receiver_instance), kn, piece)
-      | _ -> raise_unknown "invalid fragment (receiver_instance)" )
-  | _ -> raise_unknown "invalid fragment (sender_instance)"
+      | None -> raise_unknown "invalid fragment (receiver_instance)" )
+  | None -> raise_unknown "invalid fragment (sender_instance)"
 
 let parse_fragment_v3 = catch parse_fragment_v3_exn
 
