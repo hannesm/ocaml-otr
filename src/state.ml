@@ -77,10 +77,10 @@ with sexp
 
 let smp_state_to_string = function
   | SMPSTATE_WAIT_FOR_Y _ -> "waiting for secret"
-  | SMPSTATE_EXPECT1      -> "expect 1"
-  | SMPSTATE_EXPECT2 _    -> "expect 2"
-  | SMPSTATE_EXPECT3 _    -> "expect 3"
-  | SMPSTATE_EXPECT4 _    -> "expect 4"
+  | SMPSTATE_EXPECT1      -> "initial"
+  | SMPSTATE_EXPECT2 _    -> "waiting for msg 2"
+  | SMPSTATE_EXPECT3 _    -> "waiting for msg 3"
+  | SMPSTATE_EXPECT4 _    -> "waiting for msg 4"
 
 type policy = [
   | `REQUIRE_ENCRYPTION
