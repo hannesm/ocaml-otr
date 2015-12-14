@@ -30,14 +30,14 @@ let parse_query_exn str =
     | _ -> acc
   in
   let parse idx =
-    let string = Astring.String.slice ~start:idx str in
-    match Astring.String.cut ~sep:"?" string with
+    let _, left = Astring.String.span ~max:idx str in
+    match Astring.String.cut ~sep:"?" left with
     | None -> ([], None)
     | Some (vs, post) ->
       let versions = Astring.String.fold_left parse_v [] vs in
       (List.rev versions, maybe post)
   in
-  match String.(get str 0, get str 1) with
+  match String.get str 0, String.get str 1 with
   | '?', 'v' -> parse 2
   | 'v', _ -> parse 1
   | _ -> raise_unknown "no usable version found"
@@ -76,11 +76,13 @@ let parse_plain_tag_exn data =
     if String.length str < 8 then
       (List.rev acc, maybe str)
     else
-      let rest = Astring.String.slice ~start:8 str in
-      match Astring.String.slice ~stop:8 str with
-      | x when x = tag_v2 -> find_mark rest (`V2 :: acc)
-      | x when x = tag_v3 -> find_mark rest (`V3 :: acc)
-      | _ -> find_mark rest acc
+      let tag, rest = Astring.String.span ~max:8 str in
+      if tag = tag_v2 then
+        find_mark rest (`V2 :: acc)
+      else if tag = tag_v3 then
+        find_mark rest (`V3 :: acc)
+      else
+        find_mark rest acc
   in
   find_mark data []
 
