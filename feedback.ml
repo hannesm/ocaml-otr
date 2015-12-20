@@ -68,7 +68,7 @@ let start_session _ =
     | _ -> assert false
     in *)
   let out = match out with None -> assert false | Some x -> x in
-  let ctxb, out, msg = handle ctxb out in
+  let ctxb, _out, msg = handle ctxb out in
   (* finished *)
   assert (List.length msg = 1) ;
   (*  assert (ctxb.state.auth_state = AUTHSTATE_NONE) ; *)
@@ -135,6 +135,6 @@ let start_session _ =
     | _ -> assert false ) *)
 
 let _ =
-  for i = 0 to 10 do
+  for _i = 0 to 10 do
     start_session ()
   done

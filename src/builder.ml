@@ -2,7 +2,7 @@
 open State
 open Packet
 
-let (<+>) = Nocrypto.Uncommon.Cs.(<+>)
+let (<+>) = Cstruct.append
 
 let query_message versions =
   let is v = List.mem v versions in
@@ -80,7 +80,7 @@ let tlv ?data ?predata typ =
   match data with
   | Some payload ->
     let llen = encode_int (Int32.of_int (List.length payload)) in
-    let data = Nocrypto.Uncommon.Cs.concat (llen :: List.map encode_data payload) in
+    let data = Cstruct.concat (llen :: List.map encode_data payload) in
     let pred = match predata with
       | None -> Cstruct.create 0
       | Some x -> x

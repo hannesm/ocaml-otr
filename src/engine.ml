@@ -77,7 +77,7 @@ let handle_tlvs state = function
     let state, out, warn = process_data state (Cstruct.of_string data) [] [] in
     let out = match filter_map out with
       | [] -> None
-      | xs -> Some (Cstruct.to_string (Nocrypto.Uncommon.Cs.concat xs))
+      | xs -> Some (Cstruct.to_string (Cstruct.concat xs))
     in
     return (state, out, warn)
 
@@ -141,13 +141,13 @@ let encrypt dh_keys symm reveal_macs version instances flags data =
   let mac = Crypto.sha1mac ~key:keyblock.send_mac data in
   let reveal =
     let macs = if reveal_macs then
-        Nocrypto.Uncommon.Cs.concat (List.map (fun x -> x.recv_mac) reveal)
+        Cstruct.concat (List.map (fun x -> x.recv_mac) reveal)
       else
         Cstruct.create 0
     in
     Builder.encode_data macs
   in
-  let out = Nocrypto.Uncommon.Cs.concat [ data ; mac ; reveal] in
+  let out = Cstruct.concat [ data ; mac ; reveal] in
   let symm = Ratchet.inc_send_counter dh_keys.their_keyid our_id symm in
   (symm, out)
 

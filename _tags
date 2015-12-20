@@ -1,66 +1,20 @@
-# OASIS_START
-# DO NOT EDIT (digest: a2ba252ea82c14185d038f908a2f541f)
-# Ignore VCS directories, you can use the same kind of rule outside
-# OASIS_START/STOP if you want to exclude directories that contains
-# useless stuff for the build process
-true: annot, bin_annot
-<**/.svn>: -traverse
-<**/.svn>: not_hygienic
-".bzr": -traverse
-".bzr": not_hygienic
-".hg": -traverse
-".hg": not_hygienic
-".git": -traverse
-".git": not_hygienic
-"_darcs": -traverse
-"_darcs": not_hygienic
-# Library otr
-"src/otr.cmxs": use_otr
-"src/tracing.cmx": for-pack(Otr)
-"src/packet.cmx": for-pack(Otr)
-"src/control.cmx": for-pack(Otr)
-"src/crypto.cmx": for-pack(Otr)
-"src/state.cmx": for-pack(Otr)
-"src/ratchet.cmx": for-pack(Otr)
-"src/builder.cmx": for-pack(Otr)
-"src/parser.cmx": for-pack(Otr)
-"src/ake.cmx": for-pack(Otr)
-"src/smp.cmx": for-pack(Otr)
-"src/engine.cmx": for-pack(Otr)
-"src/utils.cmx": for-pack(Otr)
-<src/otr.{cma,cmxa}>: oasis_library_otr_byte
-<src/*.ml{,i,y}>: oasis_library_otr_byte
-<src/*.ml{,i,y}>: pkg_astring
-<src/*.ml{,i,y}>: pkg_cstruct
-<src/*.ml{,i,y}>: pkg_cstruct.syntax
-<src/*.ml{,i,y}>: pkg_nocrypto
-<src/*.ml{,i,y}>: pkg_sexplib.syntax
-# Library tests
-"tests/tests.cmxs": use_tests
-# Executable test_runner
-"tests/unittestrunner.native": pkg_astring
-"tests/unittestrunner.native": pkg_cstruct
-"tests/unittestrunner.native": pkg_cstruct.syntax
-"tests/unittestrunner.native": pkg_cstruct.unix
-"tests/unittestrunner.native": pkg_nocrypto
-"tests/unittestrunner.native": pkg_oUnit
-"tests/unittestrunner.native": pkg_sexplib.syntax
-"tests/unittestrunner.native": use_otr
-"tests/unittestrunner.native": use_tests
-<tests/*.ml{,i,y}>: pkg_cstruct.unix
-<tests/*.ml{,i,y}>: pkg_oUnit
-<tests/*.ml{,i,y}>: use_tests
-# Executable feedback
-"tests/feedback.native": pkg_astring
-"tests/feedback.native": pkg_cstruct
-"tests/feedback.native": pkg_cstruct.syntax
-"tests/feedback.native": pkg_nocrypto
-"tests/feedback.native": pkg_sexplib.syntax
-"tests/feedback.native": use_otr
-<tests/*.ml{,i,y}>: pkg_astring
-<tests/*.ml{,i,y}>: pkg_cstruct
-<tests/*.ml{,i,y}>: pkg_cstruct.syntax
-<tests/*.ml{,i,y}>: pkg_nocrypto
-<tests/*.ml{,i,y}>: pkg_sexplib.syntax
-<tests/*.ml{,i,y}>: use_otr
-# OASIS_STOP
+true : annot, bin_annot
+true : warn_error(+1..49)
+true : warn(+A-4-6-7-9-40-42-44-48)
+"src" : include
+
+<src/ake.{ml,mli}>: package(cstruct), package(nocrypto), for-pack(Otr)
+<src/builder.{ml,mli}>: package(cstruct), for-pack(Otr)
+<src/control.ml>: for-pack(Otr)
+<src/crypto.{ml,mli}>: package(cstruct), package(nocrypto), for-pack(Otr)
+<src/engine.ml>: package(cstruct), package(nocrypto), for-pack(Otr)
+<src/otr.mli>: package(nocrypto), package(sexplib.syntax), syntax(camlp4o), for-pack(Otr)
+<src/packet.ml>: package(cstruct.syntax), package(sexplib), syntax(camlp4o), for-pack(Otr)
+<src/parser.{ml,mli}>: package(cstruct), package(astring), package(nocrypto), package(sexplib.syntax), syntax(camlp4o), for-pack(Otr)
+<src/ratchet.{ml,mli}>: package(cstruct), for-pack(Otr)
+<src/smp.{ml,mli}>: package(cstruct), package(nocrypto), for-pack(Otr)
+<src/state.ml>: package(cstruct), package(sexplib), package(nocrypto), package(sexplib.syntax), syntax(camlp4o), for-pack(Otr)
+<src/tracing.ml>: package(sexplib), for-pack(Otr)
+<src/utils.ml>: package(nocrypto), for-pack(Otr)
+
+<feedback.{ml,native,byte}>: package(nocrypto), package(cstruct), package(astring)

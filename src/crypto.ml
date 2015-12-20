@@ -4,7 +4,7 @@ open Nocrypto
 let encode_mpi n =
   Builder.encode_data (Numeric.Z.to_cstruct_be n)
 
-let (<+>) = Uncommon.Cs.(<+>)
+let (<+>) = Cstruct.append
 
 let mpi_gt h1 h2 =
   Numeric.Z.(of_cstruct_be h1 > of_cstruct_be h2)
@@ -12,16 +12,15 @@ let mpi_gt h1 h2 =
 module OtrDsa = struct
   open Nocrypto
   open Nocrypto.Dsa
-  open Nocrypto.Uncommon
 
   let pub ~p ~q ~gg ~y =
     let z_of_cs = Numeric.Z.of_cstruct_be ?bits:None in
     { p = z_of_cs p ; q = z_of_cs q ; gg = z_of_cs gg ; y = z_of_cs y }
 
-  let to_wire ?notag { p ; q ; gg ; y } =
+  let to_wire ?notag ({ p ; q ; gg ; y } : Nocrypto.Dsa.pub) =
     let tag =
       match notag with
-      | None   -> Cs.create_with 2 0
+      | None   -> let buf = Cstruct.create 2 in Cstruct.memset buf 0 ; buf
       | Some _ -> Cstruct.create 0
     in
     tag <+> encode_mpi p <+> encode_mpi q <+> encode_mpi gg <+> encode_mpi y
@@ -64,7 +63,8 @@ module AES_CTR = Cipher_block.AES.CTR
 
 let crypt ~key ~ctr msg =
   let ctr =
-    let buf = Uncommon.Cs.create_with 16 0 in
+    let buf = Cstruct.create 16 in
+    Cstruct.memset buf 0 ;
     Cstruct.BE.set_uint64 buf 0 ctr ;
     buf
   in
@@ -77,7 +77,7 @@ let hash data =
   Hash.digest `SHA256 data
 
 let mac ~key data =
-  let data= Uncommon.Cs.concat data in
+  let data= Cstruct.concat data in
   Hash.mac `SHA256 ~key data
 
 let mac160 ~key data =
@@ -104,7 +104,7 @@ let check_gy gy =
 let smp_hash version mpis =
   let buf = Cstruct.create 1 in
   Cstruct.set_uint8 buf 0 version ;
-  hash (Uncommon.Cs.concat (buf :: List.map encode_mpi mpis))
+  hash (Cstruct.concat (buf :: List.map encode_mpi mpis))
 
 let oakley_5_q = Z.((group.Dh.p - one) / (succ one))
 
