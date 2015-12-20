@@ -1,5 +1,6 @@
-master:
+0.3.0 (2015-12-20):
 * add `update_config` function to update a session with given parameters
+* use Astring instead of Stringext for String functionality
 
 0.2.0 (2015-07-02):
 * config contains policies and versions, but no longer the DSA key
