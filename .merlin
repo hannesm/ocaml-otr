@@ -1,0 +1,10 @@
+S src
+
+B _build/**
+
+PKG cstruct
+PKG sexplib
+PKG nocrypto
+PKG astring
+
+EXT sexplib
