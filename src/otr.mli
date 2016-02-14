@@ -49,7 +49,10 @@ module State : sig
     | `WHITESPACE_START_AKE
     | `ERROR_START_AKE
     | `REVEAL_MACS
-  ] with sexp
+  ]
+
+  val sexp_of_policy : policy -> Sexplib.Sexp.t
+  val policy_of_sexp : Sexplib.Sexp.t -> policy
 
   (** [policy_to_string policy] is [string], the string representation
       of the given [policy]. *)
@@ -63,7 +66,10 @@ module State : sig
   val all_policies : policy list
 
   (** OTR protocol versions supported by this library *)
-  type version = [ `V2 | `V3 ] with sexp
+  type version = [ `V2 | `V3 ]
+
+  val sexp_of_version : version -> Sexplib.Sexp.t
+  val version_of_sexp : Sexplib.Sexp.t -> version
 
   (** [version_to_string version] is [string], the string
      representation of the [version]. *)
@@ -80,7 +86,10 @@ module State : sig
   type config = {
     policies : policy list ;
     versions : version list ;
-  } with sexp
+  }
+
+  val sexp_of_config : config -> Sexplib.Sexp.t
+  val config_of_sexp : Sexplib.Sexp.t -> config
 
   (** [config versions policies] is [config], the configuration with
       the given [versions] and [policies]. *)

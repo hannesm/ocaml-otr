@@ -14,7 +14,10 @@ type ret = [
   | `String of string
   | `Fragment_v2 of (int * int) * string
   | `Fragment_v3 of (int32 * int32) * (int * int) * string
-] with sexp
+]
+
+val ret_of_sexp : Sexplib.Type.t -> ret
+val sexp_of_ret : ret -> Sexplib.Type.t
 
 val classify_input : string -> ret
 

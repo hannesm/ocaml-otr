@@ -13,7 +13,7 @@ type ret = [
   | `SMP_failure
 ]
 
-type dh_params = (Nocrypto.Dh.secret * Cstruct.t) with sexp
+type dh_params = (Nocrypto.Dh.secret * Cstruct.t) [@@deriving sexp]
 
 type dh_keys = {
   dh          : dh_params ;
@@ -22,7 +22,7 @@ type dh_keys = {
   gy          : Cstruct.t ;
   previous_gy : Cstruct.t ;
   their_keyid : int32 ;
-} with sexp
+} [@@deriving sexp]
 
 type symmetric_keys = {
   send_aes : Cstruct.t ;
@@ -31,9 +31,9 @@ type symmetric_keys = {
   recv_aes : Cstruct.t ;
   recv_mac : Cstruct.t ;
   recv_ctr : int64 ;
-} with sexp
+} [@@deriving sexp]
 
-type symms = (int32 * int32 * symmetric_keys) list with sexp
+type symms = (int32 * int32 * symmetric_keys) list [@@deriving sexp]
 
 type enc_data = {
   dh_keys   : dh_keys ;
@@ -41,13 +41,13 @@ type enc_data = {
   their_dsa : Nocrypto.Dsa.pub ;
   ssid      : Cstruct.t ;
   high      : bool ;
-} with sexp
+} [@@deriving sexp]
 
 type message_state =
   | MSGSTATE_PLAINTEXT
   | MSGSTATE_ENCRYPTED of enc_data
   | MSGSTATE_FINISHED
-with sexp
+[@@deriving sexp]
 
 let message_state_to_string = function
   | MSGSTATE_PLAINTEXT   -> "plain"
@@ -59,7 +59,7 @@ type auth_state =
   | AUTHSTATE_AWAITING_DHKEY of Cstruct.t * Cstruct.t * dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_REVEALSIG of dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_SIG of Cstruct.t * (Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t) * dh_params * Cstruct.t
-with sexp
+[@@deriving sexp]
 
 let auth_state_to_string = function
   | AUTHSTATE_NONE                 -> "none"
@@ -73,7 +73,7 @@ type smp_state =
   | SMPSTATE_EXPECT2 of Cstruct.t * Nocrypto.Dh.secret * Nocrypto.Dh.secret
   | SMPSTATE_EXPECT3 of Cstruct.t * Cstruct.t * Cstruct.t * Nocrypto.Dh.secret * Cstruct.t * Cstruct.t
   | SMPSTATE_EXPECT4 of Cstruct.t * Cstruct.t * Cstruct.t * Nocrypto.Dh.secret
-with sexp
+[@@deriving sexp]
 
 let smp_state_to_string = function
   | SMPSTATE_WAIT_FOR_Y _ -> "waiting for secret"
@@ -88,7 +88,7 @@ type policy = [
   | `WHITESPACE_START_AKE
   | `ERROR_START_AKE
   | `REVEAL_MACS
-] with sexp
+] [@@deriving sexp]
 
 let policy_to_string = function
   | `REQUIRE_ENCRYPTION   -> "require encryption"
@@ -107,7 +107,7 @@ let string_to_policy = function
 
 let all_policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ; `REVEAL_MACS ]
 
-type version = [ `V2 | `V3 ] with sexp
+type version = [ `V2 | `V3 ] [@@deriving sexp]
 
 let version_to_string = function
   | `V2 -> "version 2"
@@ -123,13 +123,13 @@ let all_versions = [ `V2 ; `V3 ]
 type config = {
   policies : policy list ;
   versions : version list ;
-} with sexp
+} [@@deriving sexp]
 
 type state = {
   message_state : message_state ;
   auth_state    : auth_state ;
   smp_state     : smp_state ;
-} with sexp
+} [@@deriving sexp]
 
 type session = {
   instances : (int32 * int32) option ;
@@ -138,7 +138,7 @@ type session = {
   config : config ;
   dsa : Nocrypto.Dsa.priv ;
   fragments : ((int * int) * string) ;
-} with sexp
+} [@@deriving sexp]
 
 let update_config config ctx = { ctx with config }
 
