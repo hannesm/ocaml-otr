@@ -39,11 +39,12 @@ let rotate_keys dh_keys send recv dh_y =
   rotate_their_keys (rotate_our_keys dh_keys recv) send dh_y
 
 let setup_keys (dh_secret, gx) gy =
-  let high = Crypto.mpi_gt gx gy
-  and shared = Crypto.dh_shared_exn dh_secret gy
-  in
-  let send_aes, send_mac, recv_aes, recv_mac = Crypto.data_keys shared high in
-  { send_aes ; send_mac ; send_ctr = 0L ; recv_aes ; recv_mac ; recv_ctr = 0L }
+  let high = Crypto.mpi_gt gx gy in
+  match Crypto.dh_shared dh_secret gy with
+  | None -> assert false (* can never happen, parameters have been checked earlier! *)
+  | Some shared ->
+    let send_aes, send_mac, recv_aes, recv_mac = Crypto.data_keys shared high in
+    { send_aes ; send_mac ; send_ctr = 0L ; recv_aes ; recv_mac ; recv_ctr = 0L }
 
 let find_keys keylist send recv =
   let rec go = function

@@ -91,11 +91,7 @@ let group = Dh.Group.oakley_5
 let gen_dh_secret () =
   Dh.gen_key group
 
-let dh_shared_exn = Dh.shared group
-
-let dh_shared dh_secret gy =
-  try Some (dh_shared_exn dh_secret gy)
-  with Dh.Invalid_public_key -> None
+let dh_shared = Dh.shared group
 
 let check_gy gy =
   let gy = Numeric.Z.of_cstruct_be gy in

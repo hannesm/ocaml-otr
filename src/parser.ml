@@ -67,7 +67,9 @@ let parse_data_exn data =
   | None -> raise_unknown "empty OTR message"
   | Some (data, rest) ->
     let b64data = Cstruct.of_string data in
-    (Nocrypto.Base64.decode b64data, maybe rest)
+    match Nocrypto.Base64.decode b64data with
+    | None -> raise_unknown "bad base64 data"
+    | Some x -> (x, maybe rest)
 
 let parse_data = catch parse_data_exn
 

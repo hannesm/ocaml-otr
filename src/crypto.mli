@@ -22,7 +22,6 @@ val mac160 : key:Cstruct.t -> Cstruct.t -> Cstruct.t
 val sha1mac : key:Cstruct.t -> Cstruct.t -> Cstruct.t
 
 val gen_dh_secret : unit -> (Nocrypto.Dh.secret * Cstruct.t)
-val dh_shared_exn : Nocrypto.Dh.secret -> Cstruct.t -> Cstruct.t
 val dh_shared : Nocrypto.Dh.secret -> Cstruct.t -> Cstruct.t option
 val check_gy : Cstruct.t -> bool
 
