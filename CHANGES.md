@@ -1,3 +1,6 @@
+0.3.1 (2016-03-21):
+* get rid of camlp4, use ppx instead
+
 0.3.0 (2015-12-20):
 * add `update_config` function to update a session with given parameters
 * use Astring instead of Stringext for String functionality
