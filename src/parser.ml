@@ -2,6 +2,7 @@
 open Packet
 open Cstruct
 open State
+open Result
 
 type error =
   | Unknown of string
@@ -9,6 +10,7 @@ type error =
   | LeadingZero
 
 include Control.Or_error_make (struct type err = error end)
+type 'a result = ('a, error) Result.result
 
 exception Parser_error of error
 
