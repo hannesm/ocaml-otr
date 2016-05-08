@@ -2,7 +2,7 @@ S src
 
 B _build/**
 
-FLG -warn_error +1..49 -w +A-4-41-44
+FLG -safe-string -warn_error +1..49 -w +A-4-41-44
 
 PKG cstruct
 PKG sexplib
