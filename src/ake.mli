@@ -5,9 +5,9 @@ type error =
   | VersionMismatch
   | InstanceMismatch
 
-include Control.Or_error with type err = error
+type 'a result = ('a, error) Result.result
 
-val dh_commit : State.session -> State.version list -> (State.session * Cstruct.t) or_error
+val dh_commit : State.session -> State.version list -> (State.session * Cstruct.t) result
 
 val handle_auth : State.session -> Cstruct.t ->
-  (State.session * Cstruct.t option * State.ret list) or_error
+  (State.session * Cstruct.t option * State.ret list) result

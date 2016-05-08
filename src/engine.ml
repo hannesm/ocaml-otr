@@ -1,4 +1,5 @@
 open State
+open Result
 
 let policy ctx p = List.mem p ctx.config.policies
 
@@ -14,11 +15,11 @@ let handle_cleartext ctx =
 
 let commit ctx their_versions =
   match Ake.dh_commit ctx their_versions with
-  | Ake.Ok (ctx, out) -> return (ctx, Some out)
-  | Ake.Error (Ake.Unknown e) -> fail e
-  | Ake.Error Ake.VersionMismatch -> fail "couldn't agree on a version"
-  | Ake.Error Ake.InstanceMismatch -> fail "wrong instances"
-  | Ake.Error (Ake.Unexpected _) -> fail "unexpected message"
+  | Ok (ctx, out) -> return (ctx, Some out)
+  | Error (Ake.Unknown e) -> fail e
+  | Error Ake.VersionMismatch -> fail "couldn't agree on a version"
+  | Error Ake.InstanceMismatch -> fail "wrong instances"
+  | Error (Ake.Unexpected _) -> fail "unexpected message"
 
 let handle_whitespace_tag ctx their_versions =
   let warn = handle_cleartext ctx in
@@ -49,8 +50,8 @@ let handle_tlv state typ buf =
          | SMP_ABORT
          | SMP_MESSAGE_1Q as smp_type) ->
     ( match Smp.handle_smp state.smp_state smp_type buf with
-      | Smp.Ok (smp_state, out, usr) -> ({ state with smp_state }, out, usr)
-      | Smp.Error e ->
+      | Ok (smp_state, out, usr) -> ({ state with smp_state }, out, usr)
+      | Error e ->
         let msg = Smp.error_to_string e in
         ({ state with smp_state = SMPSTATE_EXPECT1 }, None, [`Warning msg]) )
   | None -> (state, None, [`Warning "unknown tlv type"])
@@ -69,10 +70,10 @@ let handle_tlvs state = function
       match Cstruct.len data with
       | 0 -> (state, out, warn)
       | _ -> match Parser.parse_tlv data with
-        | Parser.Ok (typ, buf, rest) ->
+        | Ok (typ, buf, rest) ->
           let state, out', warn' = handle_tlv state typ buf in
           process_data state rest (out' :: out) (warn @ warn')
-        | Parser.Error _ -> (state, out, [`Warning "ignoring malformed TLV"])
+        | Error _ -> (state, out, [`Warning "ignoring malformed TLV"])
     in
     let state, out, warn = process_data state (Cstruct.of_string data) [] [] in
     let out = match filter_map out with
@@ -83,7 +84,7 @@ let handle_tlvs state = function
 
 let decrypt dh_keys symm version instances bytes =
   match Parser.parse_data bytes with
-  | Parser.Ok (version', instances', _flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
+  | Ok (version', instances', _flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
     if version <> version' then
       return (dh_keys, symm, None, [`Warning "ignoring message with invalid version"])
     else if
@@ -127,9 +128,9 @@ let decrypt dh_keys symm version instances bytes =
             in
             (dh_keys, symm, data, ret)
       end
-  | Parser.Error Parser.Underflow -> fail "Malformed OTR data message: parser reported underflow"
-  | Parser.Error Parser.LeadingZero -> fail "Malformed OTR data message: parser reported leading zero"
-  | Parser.Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
+  | Error Parser.Underflow -> fail "Malformed OTR data message: parser reported underflow"
+  | Error Parser.LeadingZero -> fail "Malformed OTR data message: parser reported leading zero"
+  | Error (Parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
 
 let encrypt dh_keys symm reveal_macs version instances flags data =
   let symm, reveal = Ratchet.reveal dh_keys symm in
@@ -161,18 +162,18 @@ let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
     ( match Ake.handle_auth ctx bytes with
-      | Ake.Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn)
-      | Ake.Error (Ake.Unexpected ignore) ->
+      | Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn)
+      | Error (Ake.Unexpected ignore) ->
         if ignore then
           return (ctx, None, [])
         else
           return (ctx,
                   Some (otr_err_mark ^ " ignoring unreadable message"),
                   [`Warning "received encrypted data while in plaintext mode, ignoring unreadable message"])
-      | Ake.Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
-      | Ake.Error Ake.VersionMismatch ->
+      | Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
+      | Error Ake.VersionMismatch ->
         return (ctx, None, [`Warning "wrong version in message"])
-      | Ake.Error Ake.InstanceMismatch ->
+      | Error Ake.InstanceMismatch ->
         return (ctx, None, [`Warning "wrong instances in message"]) )
   | MSGSTATE_ENCRYPTED enc_data ->
     decrypt enc_data.dh_keys enc_data.symms ctx.version ctx.instances bytes >>= fun (dh_keys, symms, data, ret) ->
@@ -317,13 +318,13 @@ let handle_smp ctx call =
   in
   match ctx.state.message_state with
   | MSGSTATE_ENCRYPTED enc_data -> ( match call enc_data ctx.state.smp_state with
-      | Smp.Ok (smp_state, Some out) ->
+      | Ok (smp_state, Some out) ->
         let st, out = enc enc_data out smp_state in
         (st, out, [])
-      | Smp.Ok (smp_state, None) ->
+      | Ok (smp_state, None) ->
         let state = { ctx.state with smp_state } in
         ({ ctx with state }, None, [])
-      | Smp.Error e ->
+      | Error e ->
         let out = Builder.tlv Packet.SMP_ABORT in
         let st, out = enc enc_data out SMPSTATE_EXPECT1 in
         let err = Smp.error_to_string e in

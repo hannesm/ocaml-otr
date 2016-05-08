@@ -1,5 +1,6 @@
 
 open State
+open Result
 
 type error =
   | UnexpectedMessage
@@ -10,6 +11,7 @@ let error_to_string = function
   | InvalidZeroKnowledgeProof -> "invalid zero knowledge proof"
 
 include Control.Or_error_make (struct type err = error end)
+type 'a result = ('a, error) Result.result
 
 let fp = Crypto.OtrDsa.fingerprint
 let my_fp dsa = fp (Nocrypto.Dsa.pub_of_priv dsa)
@@ -41,8 +43,8 @@ let abort_smp smp_state =
 
 let handle_smp_1 data =
   match Parser.parse_datas data 6 with
-  | Parser.Error _ -> fail UnexpectedMessage
-  | Parser.Ok xs ->
+  | Error _ -> fail UnexpectedMessage
+  | Ok xs ->
     let g2a = List.nth xs 0
     and c2 = List.nth xs 1
     and d2 = List.nth xs 2
@@ -82,8 +84,8 @@ let handle_secret dsa enc_data smp_state secret =
 
 let handle_smp_2 x a2 a3 data =
   match Parser.parse_datas data 11 with
-  | Parser.Error _ -> fail UnexpectedMessage
-  | Parser.Ok xs ->
+  | Error _ -> fail UnexpectedMessage
+  | Ok xs ->
     let g2b = List.nth xs 0
     and c2 = List.nth xs 1
     and d2 = List.nth xs 2
@@ -123,8 +125,8 @@ let handle_smp_2 x a2 a3 data =
 
 let handle_smp_3 g3a g2 g3 b3 pb qb data =
   match Parser.parse_datas data 8 with
-  | Parser.Error _ -> fail UnexpectedMessage
-  | Parser.Ok xs ->
+  | Error _ -> fail UnexpectedMessage
+  | Ok xs ->
     let pa = List.nth xs 0
     and qa = List.nth xs 1
     and cp = List.nth xs 2
@@ -159,8 +161,8 @@ let handle_smp_3 g3a g2 g3 b3 pb qb data =
 
 let handle_smp_4 g3b pab qab a3 data =
   match Parser.parse_datas data 3 with
-  | Parser.Error _ -> fail UnexpectedMessage
-  | Parser.Ok xs ->
+  | Error _ -> fail UnexpectedMessage
+  | Ok xs ->
     let rb = List.nth xs 0
     and cr = List.nth xs 1
     and d7 = List.nth xs 2

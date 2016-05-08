@@ -1,5 +1,6 @@
 
 open State
+open Result
 
 (* Monadic control-flow core. *)
 type error =
@@ -9,6 +10,7 @@ type error =
   | InstanceMismatch
 
 include Control.Or_error_make (struct type err = error end)
+type 'a result = ('a, error) Result.result
 
 let instance_tag () =
   (* 32 bit random, >= 0x00000100 *)
@@ -27,10 +29,10 @@ let instances = function
 
 let safe_parse f x =
   match f x with
-  | Parser.Ok x -> return x
-  | Parser.Error Parser.Underflow -> fail (Unknown "underflow error while parsing")
-  | Parser.Error Parser.LeadingZero -> fail (Unknown "leading zero of a MPI while parsing")
-  | Parser.Error (Parser.Unknown x) -> fail (Unknown ("error while parsing: " ^ x))
+  | Ok x -> return x
+  | Error Parser.Underflow -> fail (Unknown "underflow error while parsing")
+  | Error Parser.LeadingZero -> fail (Unknown "leading zero of a MPI while parsing")
+  | Error (Parser.Unknown x) -> fail (Unknown ("error while parsing: " ^ x))
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =
   let (<+>) = Nocrypto.Uncommon.Cs.(<+>) in
