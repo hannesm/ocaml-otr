@@ -1,3 +1,6 @@
+0.3.2 (2016-05-09):
+* use result, 4.03 compatibility
+
 0.3.1 (2016-03-21):
 * get rid of camlp4, use ppx instead
 

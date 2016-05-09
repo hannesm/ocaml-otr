@@ -1,4 +1,4 @@
-version = "0.3.1"
+version = "0.3.2"
 description = "Off-the-record in OCaml (version 2 and 3, https://otr.cypherpunks.ca/)"
 requires = "cstruct nocrypto astring sexplib"
 archive(byte) = "otr.cma"
