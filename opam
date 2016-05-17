@@ -19,13 +19,13 @@ build-test: [
 
 depends: [
   "ocamlfind" {build}
-  "ppx_tools"
+  "ocamlbuild" {build}
+  "ppx_tools" {build}
+  "ppx_sexp_conv" {build}
   "cstruct" {>= "1.9.0"}
   "sexplib"
   "result"
-  "ppx_sexp_conv"
   "nocrypto" {>= "0.5.3"}
   "astring"
-  "ocamlbuild" {build}
 ]
 available: [ ocaml-version >= "4.02.2" ]
