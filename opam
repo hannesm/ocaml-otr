@@ -8,18 +8,17 @@ maintainer:   ["Hannes Mehnert <hannes@mehnert.org>"]
 license:      "BSD2"
 
 build: [
-  ["ocaml" "pkg/build.ml" "native=%{ocaml-native}%"
-                          "native-dynlink=%{ocaml-native-dynlink}%"]
+  ["ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%"]
 ]
 build-test: [
-  ["ocaml" "pkg/build.ml" "native=%{ocaml-native}%"
-                          "native-dynlink=%{ocaml-native-dynlink}%"]
-  ["sh" "-exc" "if test -f ./feedback.native; then ./feedback.native; else ./feedback.byte; fi"]
+  ["ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true"]
+  ["ocaml" "pkg/pkg.ml" "test"]
 ]
 
 depends: [
   "ocamlfind" {build}
   "ocamlbuild" {build}
+  "topkg" {build}
   "ppx_tools" {build}
   "ppx_sexp_conv" {build}
   "cstruct" {>= "1.9.0"}

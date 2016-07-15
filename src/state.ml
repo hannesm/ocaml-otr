@@ -129,7 +129,7 @@ type state = {
   message_state : message_state ;
   auth_state    : auth_state ;
   smp_state     : smp_state ;
-} [@@deriving sexp]
+}
 
 type session = {
   instances : (int32 * int32) option ;
@@ -138,7 +138,7 @@ type session = {
   config : config ;
   dsa : Nocrypto.Dsa.priv ;
   fragments : ((int * int) * string) ;
-} [@@deriving sexp]
+}
 
 let update_config config ctx = { ctx with config }
 
@@ -190,9 +190,6 @@ let config versions policies =
   if List.length versions = 0 then
     invalid_arg "no versions supplied" ;
   { versions ; policies }
-
-let policies cfg = cfg.policies
-let versions cfg = cfg.versions
 
 let rst_frag ctx = { ctx with fragments = ((0, 0), "") }
 
