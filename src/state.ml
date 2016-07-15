@@ -166,7 +166,7 @@ let session_to_string s =
   version ^ smp_state ^
   instances
 
-let new_session config dsa _ =
+let new_session config dsa () =
   let state = {
     message_state = MSGSTATE_PLAINTEXT ;
     auth_state = AUTHSTATE_NONE ;

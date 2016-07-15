@@ -174,12 +174,13 @@ let handle_commit_await_key ctx dh_c h version instances buf =
     (ctx, Some dh_key)
 
 let check_version_instances ctx version instances =
-  ( match ctx.state.auth_state with
+  begin match ctx.state.auth_state with
     | AUTHSTATE_NONE -> return { ctx with version }
     | _ ->
       guard (version = ctx.version) VersionMismatch >|= fun () ->
-      ctx ) >>= fun (ctx) ->
-  ( match version, instances, ctx.instances with
+      ctx
+  end >>= fun ctx ->
+  match version, instances, ctx.instances with
     | `V3, Some (yoursend, yourrecv), Some (mysend, myrecv) when mysend = 0l ->
       guard ((yourrecv = myrecv) && (Int32.shift_right_logical yoursend 8 > 0l)) InstanceMismatch >|= fun () ->
       { ctx with instances = Some (yoursend, myrecv) }
@@ -193,7 +194,7 @@ let check_version_instances ctx version instances =
       else (* other side has an encrypted session with us, but we do not *)
         return ctx
     | `V2, _ , _ -> return ctx
-    | _ -> fail InstanceMismatch )
+    | _ -> fail InstanceMismatch
 
 let handle_auth ctx bytes =
   let open Packet in

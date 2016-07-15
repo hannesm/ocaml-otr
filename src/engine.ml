@@ -161,20 +161,22 @@ let wrap_b64string = function
 let handle_data ctx bytes =
   match ctx.state.message_state with
   | MSGSTATE_PLAINTEXT ->
-    ( match Ake.handle_auth ctx bytes with
+    begin match Ake.handle_auth ctx bytes with
       | Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn)
       | Error (Ake.Unexpected ignore) ->
         if ignore then
           return (ctx, None, [])
         else
+          let warn = "received encrypted data while in plaintext mode, ignoring unreadable message" in
           return (ctx,
                   Some (otr_err_mark ^ " ignoring unreadable message"),
-                  [`Warning "received encrypted data while in plaintext mode, ignoring unreadable message"])
+                  [`Warning warn])
       | Error (Ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
       | Error Ake.VersionMismatch ->
         return (ctx, None, [`Warning "wrong version in message"])
       | Error Ake.InstanceMismatch ->
-        return (ctx, None, [`Warning "wrong instances in message"]) )
+        return (ctx, None, [`Warning "wrong instances in message"])
+    end
   | MSGSTATE_ENCRYPTED enc_data ->
     decrypt enc_data.dh_keys enc_data.symms ctx.version ctx.instances bytes >>= fun (dh_keys, symms, data, ret) ->
     let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED { enc_data with dh_keys ; symms } } in
@@ -247,31 +249,28 @@ let recv text = match text with None -> [] | Some x -> [ `Received x ]
 
 let handle_input ctx = function
   | `PlainTag (versions, text) ->
-    ( match handle_whitespace_tag ctx versions with
+    begin match handle_whitespace_tag ctx versions with
       | Ok (ctx, out, warn) ->
         (ctx, wrap_b64string out, warn @ recv text)
       | Error e ->
         (reset_session ctx,
          Some (otr_err_mark ^ e),
-         [`Warning e] @ recv text) )
+         [`Warning e] @ recv text)
+    end
   | `Query versions ->
-    ( match commit ctx versions with
+    begin match commit ctx versions with
       | Ok (ctx, out) -> (ctx, wrap_b64string out, [])
-      | Error e -> (reset_session ctx,
-                    Some (otr_err_mark ^ e),
-                    [`Warning e] ) )
+      | Error e -> (reset_session ctx, Some (otr_err_mark ^ e), [`Warning e] )
+    end
   | `Error message ->
     let out = handle_error ctx in
     (reset_session ctx, out,
      [`Received_error ("Received OTR Error: " ^ message)])
   | `Data bytes ->
-    ( match handle_data ctx bytes with
-      | Ok (ctx, out, warn) ->
-        (ctx, out, warn)
-      | Error e ->
-        (reset_session ctx,
-         Some (otr_err_mark ^ e),
-         [ `Warning e]) )
+    begin match handle_data ctx bytes with
+      | Ok (ctx, out, warn) -> (ctx, out, warn)
+      | Error e -> (reset_session ctx, Some (otr_err_mark ^ e), [ `Warning e])
+    end
   | `String message ->
     let user = handle_cleartext ctx in
     (ctx, None, user @ recv (Some message))

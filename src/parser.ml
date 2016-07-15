@@ -124,37 +124,42 @@ let parse_fragment_v3 = catch parse_fragment_v3_exn
 let classify_input bytes =
   match mark_match otr_v2_frag bytes with
   | Ok (pre, data) ->
-    ( match parse_fragment data with
+    begin match parse_fragment data with
       | Ok data when pre = None -> `Fragment_v2 data
       | Ok _ -> `ParseError "Malformed v2 fragment (predata)"
-      | Error _ -> `ParseError "Malformed v2 fragment" )
+      | Error _ -> `ParseError "Malformed v2 fragment"
+    end
   | Error _ -> match mark_match otr_v3_frag bytes with
     | Ok (pre, data) ->
-      ( match parse_fragment_v3 data with
+      begin match parse_fragment_v3 data with
         | Ok data when pre = None -> `Fragment_v3 data
         | Ok _ -> `ParseError "Malformed v3 fragment (predata)"
-        | Error _ -> `ParseError "Malformed v3 fragment" )
+        | Error _ -> `ParseError "Malformed v3 fragment"
+      end
     | Error _ -> match mark_match otr_mark bytes with
       | Ok (pre, data) ->
-        ( match parse_data data with
+        begin match parse_data data with
           | Ok (data, post) when pre = None && post = None -> `Data data
           | Ok _ -> `ParseError "Malformed OTR data (pre/postdata)"
-          | Error _ -> `ParseError "Malformed OTR data message" )
+          | Error _ -> `ParseError "Malformed OTR data message"
+        end
       | Error _ -> match mark_match otr_err_mark bytes with
         | Ok (pre, data) when pre = None -> `Error data
         | Ok _ -> `ParseError "Malformed Error received (predata)"
         | Error _ ->  match mark_match otr_prefix bytes with
           | Ok (pre, data) ->
-            ( match parse_query data with
+            begin match parse_query data with
               | Ok (versions, _) when pre = None -> `Query versions
               | Ok _ -> `ParseError "Malformed OTR query (pre/postdata)"
-              | Error _ -> `ParseError "Malformed OTR query" )
+              | Error _ -> `ParseError "Malformed OTR query"
+            end
           | Error _ -> match mark_match tag_prefix bytes with
             | Ok (pre, data) ->
-              ( match parse_plain_tag data with
+              begin match parse_plain_tag data with
                 | Ok (versions, None) -> `PlainTag (versions, pre)
                 | Ok _ -> `ParseError "Malformed Tag (postdata)"
-                | Error _ -> `ParseError "Malformed tag" )
+                | Error _ -> `ParseError "Malformed tag"
+              end
             | Error _ -> `String bytes
 
 (* real OTR data parsing *)
