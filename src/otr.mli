@@ -22,7 +22,10 @@
     and outgoing messages as well as initiation and teardown of
     sessions and socialist millionairs problem, and {!Utils} provides
     basic fingerprint utilities as defined in the OTR
-    specification. *)
+    specification.
+
+    {e %%VERSION%% - {{:%%PKG_HOMEPAGE%% }homepage}}
+ *)
 
 (** States and types *)
 module State : sig
