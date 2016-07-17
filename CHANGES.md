@@ -1,3 +1,6 @@
+## 0.3.3 (2016-07-17)
+
+* improve interop (instance tags) #10
 * don't pack anymore
 * switch to topkg
 
