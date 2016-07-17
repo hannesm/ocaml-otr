@@ -5,7 +5,7 @@
 set -e
 
 OCAMLBUILD=${OCAMLBUILD:="ocamlbuild -tag debug -classic-display \
-                          -use-ocamlfind" }
+                          -use-ocamlfind -cflags -warn-error,+A" }
 
 action ()
 {

@@ -1,5 +1,4 @@
 true : annot, bin_annot, safe_string, principal
-true : warn_error(+1..49)
 true : warn(+A-4-41-44)
 true : package(result), package(cstruct), package(nocrypto)
 "src" : include
