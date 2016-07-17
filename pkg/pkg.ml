@@ -9,6 +9,6 @@ let () =
   in
   Pkg.describe ~opams "otr" @@ fun _c ->
   Ok [
-    Pkg.mllib "src/otr.mllib";
+    Pkg.mllib ~api:["Otr"] "src/otr.mllib";
     Pkg.test "feedback"
   ]
