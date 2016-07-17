@@ -192,7 +192,11 @@ let check_version_instances ctx version instances =
         let myinstance = instance_tag () in
         return { ctx with instances = Some (yoursend, myinstance) }
       else (* other side has an encrypted session with us, but we do not *)
-        return ctx
+        if ctx.state.auth_state = AUTHSTATE_NONE then
+          (* hack for interop with coy.im *)
+          return { ctx with instances }
+        else (* if this happens, shit hits the fan - let's talk V2 to have Builder:header not run into failed assertions *)
+          return { ctx with version = `V2 }
     | `V2, _ , _ -> return ctx
     | _ -> fail InstanceMismatch
 
