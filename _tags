@@ -1,6 +1,6 @@
-true : annot, bin_annot, safe_string, principal
+true : bin_annot, safe_string, principal
 true : warn(+A-4-41-44)
-true : package(result), package(cstruct), package(nocrypto)
+true : package(result cstruct nocrypto)
 "src" : include
 
 <src/packet.{ml,mli}>: package(sexplib), package(cstruct.ppx)
