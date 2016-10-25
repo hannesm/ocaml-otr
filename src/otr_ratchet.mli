@@ -1,5 +1,5 @@
 
-open State
+open Otr_state
 
 val check_keys : dh_keys -> int32 -> int32 -> Cstruct.t -> string option
 

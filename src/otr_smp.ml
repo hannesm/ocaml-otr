@@ -1,6 +1,6 @@
-
-open State
 open Result
+
+open Otr_state
 
 type error =
   | UnexpectedMessage
@@ -10,39 +10,39 @@ let error_to_string = function
   | UnexpectedMessage -> "unexpected SMP message"
   | InvalidZeroKnowledgeProof -> "invalid zero knowledge proof"
 
-include Control.Or_error_make (struct type err = error end)
+include Otr_control.Or_error_make (struct type err = error end)
 type 'a result = ('a, error) Result.result
 
-let fp = Crypto.OtrDsa.fingerprint
+let fp = Otr_crypto.OtrDsa.fingerprint
 let my_fp dsa = fp (Nocrypto.Dsa.pub_of_priv dsa)
 
 let start_smp dsa enc_data smp_state ?question secret =
   ( match smp_state with
     | SMPSTATE_EXPECT1 -> return ()
     | _ -> fail UnexpectedMessage ) >|= fun () ->
-  let a2, g2a = Crypto.gen_dh_secret ()
-  and a3, g3a = Crypto.gen_dh_secret ()
+  let a2, g2a = Otr_crypto.gen_dh_secret ()
+  and a3, g3a = Otr_crypto.gen_dh_secret ()
   in
-  let c2, d2 = Crypto.proof_knowledge a2 1
-  and c3, d3 = Crypto.proof_knowledge a3 2
+  let c2, d2 = Otr_crypto.proof_knowledge a2 1
+  and c3, d3 = Otr_crypto.proof_knowledge a3 2
   in
-  let x = Crypto.prepare_secret (my_fp dsa) (fp enc_data.their_dsa) enc_data.ssid secret in
+  let x = Otr_crypto.prepare_secret (my_fp dsa) (fp enc_data.their_dsa) enc_data.ssid secret in
   let data = [ g2a ; c2 ; d2 ; g3a ; c3 ; d3 ]
   and smp_state = SMPSTATE_EXPECT2 (x, a2, a3)
   in
   let out = match question with
-    | None -> Builder.tlv ~data Packet.SMP_MESSAGE_1
-    | Some x -> Builder.tlv ~data ~predata:(Cstruct.of_string (x ^ "\000")) Packet.SMP_MESSAGE_1Q
+    | None -> Otr_builder.tlv ~data Otr_packet.SMP_MESSAGE_1
+    | Some x -> Otr_builder.tlv ~data ~predata:(Cstruct.of_string (x ^ "\000")) Otr_packet.SMP_MESSAGE_1Q
   in
   (smp_state, Some out)
 
 let abort_smp smp_state =
   match smp_state with
   | SMPSTATE_EXPECT1 -> return (SMPSTATE_EXPECT1, None)
-  | _ -> return (SMPSTATE_EXPECT1, Some (Builder.tlv Packet.SMP_ABORT))
+  | _ -> return (SMPSTATE_EXPECT1, Some (Otr_builder.tlv Otr_packet.SMP_ABORT))
 
 let handle_smp_1 data =
-  match Parser.parse_datas data 6 with
+  match Otr_parser.parse_datas data 6 with
   | Error _ -> fail UnexpectedMessage
   | Ok xs ->
     let g2a = List.nth xs 0
@@ -52,7 +52,7 @@ let handle_smp_1 data =
     and c3 = List.nth xs 4
     and d3 = List.nth xs 5
     in
-    if Crypto.check_proof g2a c2 d2 1 && Crypto.check_proof g3a c3 d3 2 then
+    if Otr_crypto.check_proof g2a c2 d2 1 && Otr_crypto.check_proof g3a c3 d3 2 then
       return (SMPSTATE_WAIT_FOR_Y (g2a, g3a), None, [ `SMP_awaiting_secret ])
     else
       fail InvalidZeroKnowledgeProof
@@ -60,22 +60,22 @@ let handle_smp_1 data =
 let handle_secret dsa enc_data smp_state secret =
   match smp_state with
   | SMPSTATE_WAIT_FOR_Y (g2a, g3a) ->
-    let b2, g2b = Crypto.gen_dh_secret ()
-    and b3, g3b = Crypto.gen_dh_secret ()
+    let b2, g2b = Otr_crypto.gen_dh_secret ()
+    and b3, g3b = Otr_crypto.gen_dh_secret ()
     in
-    let c2, d2 = Crypto.proof_knowledge b2 3
-    and c3, d3 = Crypto.proof_knowledge b3 4
+    let c2, d2 = Otr_crypto.proof_knowledge b2 3
+    and c3, d3 = Otr_crypto.proof_knowledge b3 4
     in
-    ( match Crypto.dh_shared b2 g2a, Crypto.dh_shared b3 g3a with
+    ( match Otr_crypto.dh_shared b2 g2a, Otr_crypto.dh_shared b3 g3a with
       | Some g2, Some g3 ->
-        let r, gr = Crypto.gen_dh_secret ()
-        and y = Crypto.prepare_secret (fp enc_data.their_dsa) (my_fp dsa) enc_data.ssid secret
+        let r, gr = Otr_crypto.gen_dh_secret ()
+        and y = Otr_crypto.prepare_secret (fp enc_data.their_dsa) (my_fp dsa) enc_data.ssid secret
         in
-        let pb = Crypto.pow_s g3 r
-        and qb = Crypto.mult_pow gr g2 y
+        let pb = Otr_crypto.pow_s g3 r
+        and qb = Otr_crypto.mult_pow gr g2 y
         in
-        let cp, d5, d6 = Crypto.proof_equal_coords g2 g3 r y 5 in
-        let out = Builder.tlv ~data:[ g2b ; c2 ; d2 ; g3b ; c3 ; d3 ; pb ; qb ; cp ; d5 ; d6 ] Packet.SMP_MESSAGE_2
+        let cp, d5, d6 = Otr_crypto.proof_equal_coords g2 g3 r y 5 in
+        let out = Otr_builder.tlv ~data:[ g2b ; c2 ; d2 ; g3b ; c3 ; d3 ; pb ; qb ; cp ; d5 ; d6 ] Otr_packet.SMP_MESSAGE_2
         and smp_state = SMPSTATE_EXPECT3 (g3a, g2, g3, b3, pb, qb)
         in
         return (smp_state, Some out)
@@ -83,7 +83,7 @@ let handle_secret dsa enc_data smp_state secret =
   | _ -> fail UnexpectedMessage
 
 let handle_smp_2 x a2 a3 data =
-  match Parser.parse_datas data 11 with
+  match Otr_parser.parse_datas data 11 with
   | Error _ -> fail UnexpectedMessage
   | Ok xs ->
     let g2b = List.nth xs 0
@@ -98,22 +98,22 @@ let handle_smp_2 x a2 a3 data =
     and d5 = List.nth xs 9
     and d6 = List.nth xs 10
     in
-    if Crypto.check_proof g2b c2 d2 3 && Crypto.check_proof g3b c3 d3 4 then
-      match Crypto.dh_shared a2 g2b, Crypto.dh_shared a3 g3b with
+    if Otr_crypto.check_proof g2b c2 d2 3 && Otr_crypto.check_proof g3b c3 d3 4 then
+      match Otr_crypto.dh_shared a2 g2b, Otr_crypto.dh_shared a3 g3b with
       | Some g2, Some g3 ->
-        if Crypto.check_equal_coords g2 g3 pb qb cp d5 d6 5 then
-          let r, gr = Crypto.gen_dh_secret () in
-          let pa = Crypto.pow_s g3 r
-          and qa = Crypto.mult_pow gr g2 x
+        if Otr_crypto.check_equal_coords g2 g3 pb qb cp d5 d6 5 then
+          let r, gr = Otr_crypto.gen_dh_secret () in
+          let pa = Otr_crypto.pow_s g3 r
+          and qa = Otr_crypto.mult_pow gr g2 x
           in
-          let cp, d5, d6 = Crypto.proof_equal_coords g2 g3 r x 6 in
-          let pab = Crypto.compute_p pa pb
-          and qab = Crypto.compute_p qa qb
+          let cp, d5, d6 = Otr_crypto.proof_equal_coords g2 g3 r x 6 in
+          let pab = Otr_crypto.compute_p pa pb
+          and qab = Otr_crypto.compute_p qa qb
           in
-          let ra = Crypto.pow_s qab a3
-          and cr, d7 = Crypto.proof_eq_logs qab a3 7
+          let ra = Otr_crypto.pow_s qab a3
+          and cr, d7 = Otr_crypto.proof_eq_logs qab a3 7
           in
-          let out = Builder.tlv ~data:[ pa ; qa ; cp ; d5 ; d6 ; ra ; cr ; d7 ] Packet.SMP_MESSAGE_3
+          let out = Otr_builder.tlv ~data:[ pa ; qa ; cp ; d5 ; d6 ; ra ; cr ; d7 ] Otr_packet.SMP_MESSAGE_3
           and smp_state = SMPSTATE_EXPECT4 (g3b, pab, qab, a3)
           in
           return (smp_state, out)
@@ -124,7 +124,7 @@ let handle_smp_2 x a2 a3 data =
       fail UnexpectedMessage
 
 let handle_smp_3 g3a g2 g3 b3 pb qb data =
-  match Parser.parse_datas data 8 with
+  match Otr_parser.parse_datas data 8 with
   | Error _ -> fail UnexpectedMessage
   | Ok xs ->
     let pa = List.nth xs 0
@@ -136,16 +136,16 @@ let handle_smp_3 g3a g2 g3 b3 pb qb data =
     and cr = List.nth xs 6
     and d7 = List.nth xs 7
     in
-    if Crypto.check_equal_coords g2 g3 pa qa cp d5 d6 6 then
-      let pab = Crypto.compute_p pa pb
-      and qab = Crypto.compute_p qa qb
+    if Otr_crypto.check_equal_coords g2 g3 pa qa cp d5 d6 6 then
+      let pab = Otr_crypto.compute_p pa pb
+      and qab = Otr_crypto.compute_p qa qb
       in
-      if Crypto.check_eq_logs cr g3a qab d7 ra 7 then
-        let rb = Crypto.pow_s qab b3
-        and cr, d7 = Crypto.proof_eq_logs qab b3 8
+      if Otr_crypto.check_eq_logs cr g3a qab d7 ra 7 then
+        let rb = Otr_crypto.pow_s qab b3
+        and cr, d7 = Otr_crypto.proof_eq_logs qab b3 8
         in
-        let out = Builder.tlv ~data:[ rb ; cr ; d7 ] Packet.SMP_MESSAGE_4 in
-        let rab = Crypto.pow_s ra b3 in
+        let out = Otr_builder.tlv ~data:[ rb ; cr ; d7 ] Otr_packet.SMP_MESSAGE_4 in
+        let rab = Otr_crypto.pow_s ra b3 in
         let ret =
           if Cstruct.equal rab pab then
             `SMP_success
@@ -160,15 +160,15 @@ let handle_smp_3 g3a g2 g3 b3 pb qb data =
       fail UnexpectedMessage
 
 let handle_smp_4 g3b pab qab a3 data =
-  match Parser.parse_datas data 3 with
+  match Otr_parser.parse_datas data 3 with
   | Error _ -> fail UnexpectedMessage
   | Ok xs ->
     let rb = List.nth xs 0
     and cr = List.nth xs 1
     and d7 = List.nth xs 2
     in
-    if Crypto.check_eq_logs cr g3b qab d7 rb 8 then
-      let rab = Crypto.pow_s rb a3 in
+    if Otr_crypto.check_eq_logs cr g3b qab d7 rb 8 then
+      let rab = Otr_crypto.pow_s rb a3 in
       let ret =
         if Cstruct.equal rab pab then
           `SMP_success
@@ -180,7 +180,7 @@ let handle_smp_4 g3b pab qab a3 data =
       fail UnexpectedMessage
 
 let handle_smp smp_state typ data =
-  let open Packet in
+  let open Otr_packet in
   match smp_state, typ with
   | SMPSTATE_EXPECT1, SMP_MESSAGE_1 ->
     handle_smp_1 data >|= fun (s, o, r) ->
@@ -207,5 +207,5 @@ let handle_smp smp_state typ data =
   | _, SMP_ABORT ->
     return (SMPSTATE_EXPECT1, None, [])
   | _, _ ->
-    let abort = Builder.tlv SMP_ABORT in
+    let abort = Otr_builder.tlv SMP_ABORT in
     return (SMPSTATE_EXPECT1, Some abort, [])

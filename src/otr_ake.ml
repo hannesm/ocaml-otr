@@ -1,6 +1,6 @@
-
-open State
 open Result
+
+open Otr_state
 
 (* Monadic control-flow core. *)
 type error =
@@ -9,7 +9,7 @@ type error =
   | VersionMismatch
   | InstanceMismatch
 
-include Control.Or_error_make (struct type err = error end)
+include Otr_control.Or_error_make (struct type err = error end)
 type 'a result = ('a, error) Result.result
 
 let instance_tag () =
@@ -30,45 +30,45 @@ let instances = function
 let safe_parse f x =
   match f x with
   | Ok x -> return x
-  | Error Parser.Underflow -> fail (Unknown "underflow error while parsing")
-  | Error Parser.LeadingZero -> fail (Unknown "leading zero of a MPI while parsing")
-  | Error (Parser.Unknown x) -> fail (Unknown ("error while parsing: " ^ x))
+  | Error Otr_parser.Underflow -> fail (Unknown "underflow error while parsing")
+  | Error Otr_parser.LeadingZero -> fail (Unknown "leading zero of a MPI while parsing")
+  | Error (Otr_parser.Unknown x) -> fail (Unknown ("error while parsing: " ^ x))
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =
   let (<+>) = Nocrypto.Uncommon.Cs.(<+>) in
   let pub =
     let pub = Nocrypto.Dsa.pub_of_priv priv in
-    Crypto.OtrDsa.to_wire pub
+    Otr_crypto.OtrDsa.to_wire pub
   in
   let sigb =
-    let gxmpi = Builder.encode_data gx
-    and gympi = Builder.encode_data gy
+    let gxmpi = Otr_builder.encode_data gx
+    and gympi = Otr_builder.encode_data gy
     in
-    let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; pub ; Builder.encode_int keyid ] in
-    Crypto.OtrDsa.signature ~key:priv mb
+    let mb = Otr_crypto.mac ~key:hmac [ gxmpi ; gympi ; pub ; Otr_builder.encode_int keyid ] in
+    Otr_crypto.OtrDsa.signature ~key:priv mb
   in
-  let xb = pub <+> Builder.encode_int keyid <+> sigb in
-  Crypto.crypt ~key:ckey ~ctr:0L xb
+  let xb = pub <+> Otr_builder.encode_int keyid <+> sigb in
+  Otr_crypto.crypt ~key:ckey ~ctr:0L xb
 
 let mac_verify hmac signature pub gx gy keyid =
-  let gxmpi = Builder.encode_data gx
-  and gympi = Builder.encode_data gy
+  let gxmpi = Otr_builder.encode_data gx
+  and gympi = Otr_builder.encode_data gy
   in
-  let mb = Crypto.mac ~key:hmac [ gxmpi ; gympi ; Crypto.OtrDsa.to_wire pub ; Builder.encode_int keyid ] in
-  guard (Crypto.OtrDsa.verify ~key:pub signature mb) (Unknown "DSA verification failed")
+  let mb = Otr_crypto.mac ~key:hmac [ gxmpi ; gympi ; Otr_crypto.OtrDsa.to_wire pub ; Otr_builder.encode_int keyid ] in
+  guard (Otr_crypto.OtrDsa.verify ~key:pub signature mb) (Unknown "DSA verification failed")
 
 (* authentication handshake *)
 let dh_commit ctx their_versions =
   match select_version ctx.config.versions their_versions with
   | None -> fail VersionMismatch
   | Some version ->
-    let dh_secret, gx = Crypto.gen_dh_secret () in
-    let r = Crypto.gen_symmetric_key () in
-    let gxmpi = Builder.encode_data gx in
-    let gxmpi' = Crypto.crypt ~key:r ~ctr:0L gxmpi in
-    let h = Crypto.hash gxmpi in
+    let dh_secret, gx = Otr_crypto.gen_dh_secret () in
+    let r = Otr_crypto.gen_symmetric_key () in
+    let gxmpi = Otr_builder.encode_data gx in
+    let gxmpi' = Otr_crypto.crypt ~key:r ~ctr:0L gxmpi in
+    let h = Otr_crypto.hash gxmpi in
     let instances = instances version in
-    let dh_commit = Builder.dh_commit version instances gxmpi' h in
+    let dh_commit = Otr_builder.dh_commit version instances gxmpi' h in
     let auth_state = AUTHSTATE_AWAITING_DHKEY (dh_commit, h, (dh_secret, gx), r)
     and message_state = MSGSTATE_PLAINTEXT (* not entirely sure about this.. *)
     and smp_state = SMPSTATE_EXPECT1 in
@@ -76,28 +76,28 @@ let dh_commit ctx their_versions =
     return ({ ctx with version ; instances ; state }, dh_commit)
 
 let dh_key_await_revealsig ctx buf =
-  let dh_secret, gx = Crypto.gen_dh_secret () in
-  let out = Builder.dh_key ctx.version ctx.instances gx in
+  let dh_secret, gx = Otr_crypto.gen_dh_secret () in
+  let out = Otr_builder.dh_key ctx.version ctx.instances gx in
   let auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) in
   let state = { ctx.state with auth_state } in
   ({ ctx with state }, out)
 
 let check_key_reveal_sig ctx (dh_secret, gx) r gy =
-  safe_parse Parser.parse_gy gy >>= fun gy ->
-  ( match Crypto.dh_shared dh_secret gy with
+  safe_parse Otr_parser.parse_gy gy >>= fun gy ->
+  ( match Otr_crypto.dh_shared dh_secret gy with
     | Some s -> return s
     | None -> fail (Unknown "invalid DH public key")  ) >|= fun shared_secret ->
-  let (ssid, c, c', m1, m2, m1', m2') = Crypto.derive_keys shared_secret in
+  let (ssid, c, c', m1, m2, m1', m2') = Otr_crypto.derive_keys shared_secret in
   let keyidb = 1l in
   let enc_sig = mac_sign_encrypt m1 c ctx.dsa gx gy keyidb in
-  let mac = Crypto.mac160 ~key:m2 enc_sig in
-  let reveal_sig = Builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
+  let mac = Otr_crypto.mac160 ~key:m2 enc_sig in
+  let reveal_sig = Otr_builder.reveal_signature ctx.version ctx.instances r enc_sig mac in
   let auth_state = AUTHSTATE_AWAITING_SIG (reveal_sig, (ssid, c', m1', m2'), (dh_secret, gx), gy) in
   let state = { ctx.state with auth_state } in
   ({ ctx with state }, reveal_sig)
 
 let keys previous_dh gy their_keyid =
-  let dh = Crypto.gen_dh_secret ()
+  let dh = Otr_crypto.gen_dh_secret ()
   and previous_gy = Cstruct.create 0
   in
   { dh ; previous_dh ; our_keyid = 2l ;
@@ -110,26 +110,26 @@ let format_ssid ssid high =
     (if high then "" else "[") s (if high then "" else "]")
 
 let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
-  safe_parse Parser.parse_reveal buf >>= fun (r, enc_data, mac) ->
-  safe_parse Parser.parse_dh_commit dh_commit >>= fun (gxenc, hgx) ->
-  let gx = Crypto.crypt ~key:r ~ctr:0L gxenc in
-  let hgx' = Crypto.hash gx in
+  safe_parse Otr_parser.parse_reveal buf >>= fun (r, enc_data, mac) ->
+  safe_parse Otr_parser.parse_dh_commit dh_commit >>= fun (gxenc, hgx) ->
+  let gx = Otr_crypto.crypt ~key:r ~ctr:0L gxenc in
+  let hgx' = Otr_crypto.hash gx in
   guard (Cstruct.equal hgx hgx') (Unknown "hgx does not match hgx'") >>= fun () ->
-  safe_parse Parser.parse_gy gx >>= fun gx ->
-  ( match Crypto.dh_shared dh_secret gx with
+  safe_parse Otr_parser.parse_gy gx >>= fun gx ->
+  ( match Otr_crypto.dh_shared dh_secret gx with
     | Some x -> return x
     | None -> fail (Unknown "invalid DH public key") ) >>= fun shared_secret ->
-  let (ssid, c, c', m1, m2, m1', m2') = Crypto.derive_keys shared_secret in
-  let mac' = Crypto.mac160 ~key:m2 enc_data in
+  let (ssid, c, c', m1, m2, m1', m2') = Otr_crypto.derive_keys shared_secret in
+  let mac' = Otr_crypto.mac160 ~key:m2 enc_data in
   guard (Cstruct.equal mac mac') (Unknown "mac does not match mac'") >>= fun () ->
-  let xb = Crypto.crypt ~key:c ~ctr:0L enc_data in
+  let xb = Otr_crypto.crypt ~key:c ~ctr:0L enc_data in
   (* split into pubb, keyidb, sigb *)
-  safe_parse Parser.parse_signature_data xb >>= fun (pubb, keyidb, sigb) ->
+  safe_parse Otr_parser.parse_signature_data xb >>= fun (pubb, keyidb, sigb) ->
   mac_verify m1 sigb pubb gx gy keyidb >|= fun () ->
   (* pick keyida *)
   let keyida = 1l in
   let enc_sig = mac_sign_encrypt m1' c' ctx.dsa gy gx keyida in
-  let m = Crypto.mac160 ~key:m2' enc_sig in
+  let m = Otr_crypto.mac160 ~key:m2' enc_sig in
   let dh_keys = keys (dh_secret, gy) gx keyida in
   let high = false in
   let enc_data = { dh_keys ; symms = [] ; their_dsa = pubb ; ssid ; high } in
@@ -139,18 +139,18 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
     smp_state = SMPSTATE_EXPECT1 ;
   } in
   ({ ctx with state },
-   Builder.signature ctx.version ctx.instances enc_sig m,
+   Otr_builder.signature ctx.version ctx.instances enc_sig m,
    format_ssid ssid high)
 
 let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
-  safe_parse Parser.decode_data signature >>= fun (enc_data, mac) ->
+  safe_parse Otr_parser.decode_data signature >>= fun (enc_data, mac) ->
   guard (Cstruct.len mac = 20) (Unknown "mac has wrong length") >>= fun () ->
-  let mymac = Crypto.mac160 ~key:m2' enc_data in
+  let mymac = Otr_crypto.mac160 ~key:m2' enc_data in
   guard (Cstruct.equal mac mymac) (Unknown "mac do not match") >>= fun () ->
-  let dec = Crypto.crypt ~key:c' ~ctr:0L enc_data in
+  let dec = Otr_crypto.crypt ~key:c' ~ctr:0L enc_data in
   (* split into puba keyida siga(Ma) *)
-  safe_parse Parser.parse_signature_data dec >>= fun (puba, keyida, siga) ->
+  safe_parse Otr_parser.parse_signature_data dec >>= fun (puba, keyida, siga) ->
   mac_verify m1' siga puba gy gx keyida >|= fun () ->
   let dh_keys = keys (dh_secret, gx) gy keyida in
   let high = true in
@@ -165,7 +165,7 @@ let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
 let handle_commit_await_key ctx dh_c h version instances buf =
   (try return (Cstruct.sub buf (Cstruct.len buf - 32) 32)
    with _ -> fail (Unknown "underflow") ) >>= fun their_hash ->
-  if Crypto.mpi_gt h their_hash then
+  if Otr_crypto.mpi_gt h their_hash then
     return (ctx, Some dh_c)
   else
     guard (List.mem version ctx.config.versions) (Unknown "version") >|= fun () ->
@@ -201,8 +201,8 @@ let check_version_instances ctx version instances =
     | _ -> fail InstanceMismatch
 
 let handle_auth ctx bytes =
-  let open Packet in
-  safe_parse Parser.parse_header bytes >>= fun (version, typ, instances, buf) ->
+  let open Otr_packet in
+  safe_parse Otr_parser.parse_header bytes >>= fun (version, typ, instances, buf) ->
   (* simultaneous open *)
   match typ, ctx.state.auth_state with
   | DH_COMMIT, AUTHSTATE_AWAITING_DHKEY (dh_c, h, _, _) ->
@@ -217,7 +217,7 @@ let handle_auth ctx bytes =
     | DH_COMMIT, AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), _) ->
       let auth_state = AUTHSTATE_AWAITING_REVEALSIG ((dh_secret, gx), buf) in
       let state = { ctx.state with auth_state } in
-      let dh_key = Builder.dh_key ctx.version ctx.instances gx in
+      let dh_key = Otr_builder.dh_key ctx.version ctx.instances gx in
       return ({ ctx with state }, Some dh_key, [])
     | DH_COMMIT, AUTHSTATE_AWAITING_SIG _ ->
       (* send dh_key, go to AWAITING_REVEALSIG *)
@@ -231,7 +231,7 @@ let handle_auth ctx bytes =
 
     | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
       (* same dh_key? -> retransmit REVEAL_SIG *)
-      safe_parse Parser.parse_gy buf >|= fun gy' ->
+      safe_parse Otr_parser.parse_gy buf >|= fun gy' ->
       if Cstruct.equal gy gy' then
         (ctx, Some reveal_sig, [])
       else
@@ -248,7 +248,7 @@ let handle_auth ctx bytes =
       (ctx, None, [`Established_encrypted_session ssid])
 
     | DATA, _ ->
-      safe_parse Parser.parse_data_body buf >>= fun (flag, _, _, _, _, _, _, _) ->
+      safe_parse Otr_parser.parse_data_body buf >>= fun (flag, _, _, _, _, _, _, _) ->
       fail (Unexpected flag)
 
     | _ -> (* ignore this message *) return (ctx, None, [`Warning "ignoring unknown message"])

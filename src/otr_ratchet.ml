@@ -1,4 +1,4 @@
-open State
+open Otr_state
 
 let check_keys dh_keys send recv gy =
   match
@@ -11,7 +11,7 @@ let check_keys dh_keys send recv gy =
   | _    , _    , false, false -> Some "wrong receive keyid"
   | _    , _    , _    , _     ->
     match
-      Crypto.check_gy gy,
+      Otr_crypto.check_gy gy,
       dh_keys.their_keyid = Int32.succ send,
       Cstruct.len dh_keys.previous_gy = 0
     with
@@ -23,7 +23,7 @@ let rotate_our_keys dhs recv =
   if dhs.our_keyid = recv then
     { dhs with our_keyid = Int32.succ dhs.our_keyid ;
                previous_dh = dhs.dh ;
-               dh = Crypto.gen_dh_secret () }
+               dh = Otr_crypto.gen_dh_secret () }
   else
     dhs
 
@@ -39,11 +39,11 @@ let rotate_keys dh_keys send recv dh_y =
   rotate_their_keys (rotate_our_keys dh_keys recv) send dh_y
 
 let setup_keys (dh_secret, gx) gy =
-  let high = Crypto.mpi_gt gx gy in
-  match Crypto.dh_shared dh_secret gy with
+  let high = Otr_crypto.mpi_gt gx gy in
+  match Otr_crypto.dh_shared dh_secret gy with
   | None -> assert false (* can never happen, parameters have been checked earlier! *)
   | Some shared ->
-    let send_aes, send_mac, recv_aes, recv_mac = Crypto.data_keys shared high in
+    let send_aes, send_mac, recv_aes, recv_mac = Otr_crypto.data_keys shared high in
     { send_aes ; send_mac ; send_ctr = 0L ; recv_aes ; recv_mac ; recv_ctr = 0L }
 
 let find_keys keylist send recv =

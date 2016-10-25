@@ -2,7 +2,7 @@
 open Nocrypto
 
 let encode_mpi n =
-  Builder.encode_data (Numeric.Z.to_cstruct_be n)
+  Otr_builder.encode_data (Numeric.Z.to_cstruct_be n)
 
 let (<+>) = Cstruct.append
 
@@ -38,7 +38,7 @@ module OtrDsa = struct
 end
 
 let derive_keys data =
-  let secbytes = Builder.encode_data data in
+  let secbytes = Otr_builder.encode_data data in
   let h2 b = Hash.digest `SHA256 ((Cstruct.of_string b) <+> secbytes) in
   let ssid = Cstruct.sub (h2 "\000") 0 8 in
   let c, c' = Cstruct.split (h2 "\001") 16 in
@@ -50,7 +50,7 @@ let derive_keys data =
 
 
 let data_keys data high =
-  let secbytes = Builder.encode_data data in
+  let secbytes = Otr_builder.encode_data data in
   let send, recv = if high then ("\001", "\002") else ("\002", "\001") in
   let h1 b = Hash.digest `SHA1 ((Cstruct.of_string b) <+> secbytes) in
   let sendaes = Cstruct.sub (h1 send) 0 16 in
@@ -81,7 +81,7 @@ let mac ~key data =
   Hash.mac `SHA256 ~key data
 
 let mac160 ~key data =
-  let buf = mac ~key [ Builder.encode_data data ] in
+  let buf = mac ~key [ Otr_builder.encode_data data ] in
   Cstruct.sub buf 0 20
 
 let sha1mac = Hash.mac `SHA1
