@@ -1,15 +1,14 @@
-
-open Packet
 open Cstruct
-open State
 open Result
+
+open Otr_packet
 
 type error =
   | Unknown of string
   | Underflow
   | LeadingZero
 
-include Control.Or_error_make (struct type err = error end)
+include Otr_control.Or_error_make (struct type err = error end)
 type 'a result = ('a, error) Result.result
 
 exception Parser_error of error
@@ -57,8 +56,8 @@ type ret = [
   | `Data of Cstruct.t
   | `ParseError of string
   | `Error of string
-  | `PlainTag of State.version list * string option
-  | `Query of State.version list
+  | `PlainTag of Otr_state.version list * string option
+  | `Query of Otr_state.version list
   | `String of string
   | `Fragment_v2 of (int * int) * string
   | `Fragment_v3 of (int32 * int32) * (int * int) * string
@@ -81,9 +80,9 @@ let parse_plain_tag_exn data =
       (List.rev acc, maybe str)
     else
       let tag, rest = Astring.String.span ~max:8 str in
-      if tag = tag_v2 then
+      if tag = Otr_state.tag_v2 then
         find_mark rest (`V2 :: acc)
-      else if tag = tag_v3 then
+      else if tag = Otr_state.tag_v3 then
         find_mark rest (`V3 :: acc)
       else
         find_mark rest acc
@@ -122,6 +121,7 @@ let parse_fragment_v3_exn data =
 let parse_fragment_v3 = catch parse_fragment_v3_exn
 
 let classify_input bytes =
+  let open Otr_state in
   match mark_match otr_v2_frag bytes with
   | Ok (pre, data) ->
     begin match parse_fragment data with
@@ -204,7 +204,7 @@ let parse_signature_data buf =
   guard (get_uint8 gg 0 <> 0) LeadingZero >>= fun () ->
   decode_data buf >>= fun (y, buf) ->
   guard (get_uint8 y 0 <> 0) LeadingZero >>= fun () ->
-  let key = Crypto.OtrDsa.pub ~p ~q ~gg ~y in
+  let key = Otr_crypto.OtrDsa.pub ~p ~q ~gg ~y in
   catch (BE.get_uint32 buf) 0 >>= fun keyida ->
   let buf = shift buf 4 in
   guard (len buf = 40) (Unknown "signature length") >|= fun () ->

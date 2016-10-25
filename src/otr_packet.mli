@@ -22,6 +22,6 @@ type tlv_type =
   [@@uint16_t] [@@sexp]
 ]
 
-val int_of_version : State.version -> int
+val int_of_version : Otr_state.version -> int
 
-val version_of_int : int -> State.version option
+val version_of_int : int -> Otr_state.version option

@@ -3,8 +3,8 @@ true : warn(+A-4-41-44)
 true : package(result cstruct nocrypto)
 "src" : include
 
-<src/packet.{ml,mli}>: package(sexplib), package(cstruct.ppx)
-<src/parser.{ml,mli}>: package(astring), package(ppx_sexp_conv)
-<src/state.{ml,mli}>: package(sexplib), package(ppx_sexp_conv)
+<src/otr_packet.{ml,mli}>: package(sexplib), package(cstruct.ppx)
+<src/otr_parser.{ml,mli}>: package(astring), package(ppx_sexp_conv)
+<src/otr_state.{ml,mli}>: package(sexplib), package(ppx_sexp_conv)
 
 <feedback.{ml,native,byte}>: package(astring)

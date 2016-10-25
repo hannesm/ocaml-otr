@@ -1,6 +1,5 @@
 
-open State
-open Packet
+open Otr_state
 
 let (<+>) = Cstruct.append
 
@@ -26,8 +25,8 @@ let header version instances typ =
     | `V2 -> create 3
     | `V3 -> create 11
   in
-  BE.set_uint16 buf 0 (int_of_version version) ;
-  set_uint8 buf 2 (message_type_to_int typ) ;
+  BE.set_uint16 buf 0 (Otr_packet.int_of_version version) ;
+  set_uint8 buf 2 (Otr_packet.message_type_to_int typ) ;
   (match version, instances with
    | `V2, None -> ()
    | `V3, Some (them, us) ->
@@ -45,24 +44,24 @@ let encode_data data =
   encode_int (Int32.of_int (Cstruct.len data)) <+> data
 
 let dh_commit version instances dhshared hashed =
-  let header = header version instances DH_COMMIT in
+  let header = header version instances Otr_packet.DH_COMMIT in
   header <+> encode_data dhshared <+> encode_data hashed
 
 let dh_key version instances shared =
-  let header = header version instances DH_KEY in
+  let header = header version instances Otr_packet.DH_KEY in
   header <+> encode_data shared
 
 let reveal_signature version instances r enc_sig mac =
-  let header = header version instances REVEAL_SIGNATURE in
+  let header = header version instances Otr_packet.REVEAL_SIGNATURE in
   header <+> encode_data r <+> encode_data enc_sig <+> mac
 
 let signature version instances enc mac =
-  let header = header version instances SIGNATURE in
+  let header = header version instances Otr_packet.SIGNATURE in
   header <+> encode_data enc <+> mac
 
 let data version instances flags keyida keyidb dh_y ctr data =
   let open Cstruct in
-  let header = header version instances DATA in
+  let header = header version instances Otr_packet.DATA in
   let keys = create 9 in
   set_uint8 keys 0 (if flags then 1 else 0) ;
   BE.set_uint32 keys 1 keyida ;
@@ -76,7 +75,7 @@ let data version instances flags keyida keyidb dh_y ctr data =
 
 let tlv ?data ?predata typ =
   let buf = Cstruct.create 4 in
-  Cstruct.BE.set_uint16 buf 0 (Packet.tlv_type_to_int typ) ;
+  Cstruct.BE.set_uint16 buf 0 (Otr_packet.tlv_type_to_int typ) ;
   match data with
   | Some payload ->
     let llen = encode_int (Int32.of_int (List.length payload)) in
