@@ -1,6 +1,10 @@
 
 open Otr_state
 
+let int_of_version = function
+  | `V2 -> 2
+  | `V3 -> 3
+
 let (<+>) = Cstruct.append
 
 let query_message versions =
@@ -25,7 +29,7 @@ let header version instances typ =
     | `V2 -> create 3
     | `V3 -> create 11
   in
-  BE.set_uint16 buf 0 (Otr_packet.int_of_version version) ;
+  BE.set_uint16 buf 0 (int_of_version version) ;
   set_uint8 buf 2 (Otr_packet.message_type_to_int typ) ;
   (match version, instances with
    | `V2, None -> ()

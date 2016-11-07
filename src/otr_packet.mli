@@ -21,7 +21,3 @@ type tlv_type =
   | EXTRA_SYMMETRIC_KEY [@id 8]
   [@@uint16_t] [@@sexp]
 ]
-
-val int_of_version : Otr_state.version -> int
-
-val version_of_int : int -> Otr_state.version option

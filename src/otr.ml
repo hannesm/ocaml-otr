@@ -2,13 +2,12 @@ module State = Otr_state
 
 module Engine = struct
   open Otr_state
-  open Result
+  open Rresult
 
   let policy ctx p = List.mem p ctx.config.policies
 
   (* Monadic control-flow core. *)
   type error = string
-  include Otr_control.Or_error_make (struct type err = error end)
 
   let handle_cleartext ctx =
     match ctx.state.message_state with
@@ -18,18 +17,18 @@ module Engine = struct
 
   let commit ctx their_versions =
     match Otr_ake.dh_commit ctx their_versions with
-    | Ok (ctx, out) -> return (ctx, Some out)
-    | Error (Otr_ake.Unknown e) -> fail e
-    | Error Otr_ake.VersionMismatch -> fail "couldn't agree on a version"
-    | Error Otr_ake.InstanceMismatch -> fail "wrong instances"
-    | Error (Otr_ake.Unexpected _) -> fail "unexpected message"
+    | Ok (ctx, out) -> Ok (ctx, Some out)
+    | Error (Otr_ake.Unknown e) -> Error e
+    | Error Otr_ake.VersionMismatch -> Error "couldn't agree on a version"
+    | Error Otr_ake.InstanceMismatch -> Error "wrong instances"
+    | Error (Otr_ake.Unexpected _) -> Error "unexpected message"
 
   let handle_whitespace_tag ctx their_versions =
     let warn = handle_cleartext ctx in
     (if policy ctx `WHITESPACE_START_AKE then
        commit ctx their_versions
      else
-       return (ctx, None) ) >|= fun (ctx, out) ->
+       Ok (ctx, None) ) >>| fun (ctx, out) ->
     (ctx, out, warn)
 
   let handle_error ctx =
@@ -63,7 +62,7 @@ module Engine = struct
       | Some x' -> x' :: filter_map ~f xs
 
   let handle_tlvs state = function
-    | None -> return (state, None, [])
+    | None -> Ok (state, None, [])
     | Some data ->
       let rec process_data state data out warn =
         match Cstruct.len data with
@@ -79,32 +78,34 @@ module Engine = struct
         | [] -> None
         | xs -> Some (Cstruct.to_string (Cstruct.concat xs))
       in
-      return (state, out, warn)
+      Ok (state, out, warn)
+
+  let guard p e = if p then Ok () else Error e
 
   let decrypt dh_keys symm version instances bytes =
     match Otr_parser.parse_data bytes with
     | Ok (version', instances', _flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
       if version <> version' then
-        return (dh_keys, symm, None, [`Warning "ignoring message with invalid version"])
+        Ok (dh_keys, symm, None, [`Warning "ignoring message with invalid version"])
       else if
         match version, instances, instances' with
         | `V3, Some (mya, myb), Some (youra, yourb) when (mya = youra) && (myb = yourb) -> false
         | `V2, _, _ -> false
         | _ -> true
       then
-        return (dh_keys, symm, None, [`Warning "ignoring message with invalid instances"])
+        Ok (dh_keys, symm, None, [`Warning "ignoring message with invalid instances"])
       else
         begin match Otr_ratchet.check_keys dh_keys s_keyid r_keyid dh_y with
-          | Some x -> return (dh_keys, symm, None, [`Warning x])
+          | Some x -> Ok (dh_keys, symm, None, [`Warning x])
           | None ->
             let symm, keyblock = Otr_ratchet.keys dh_keys symm s_keyid r_keyid in
             if ctr' <= keyblock.recv_ctr then
-              return (dh_keys, symm, None, [`Warning "ignoring message with invalid counter"])
+              Ok (dh_keys, symm, None, [`Warning "ignoring message with invalid counter"])
             else
               let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
               guard (stop >= 0) "invalid data" >>= fun () ->
               let mac' = Otr_crypto.sha1mac ~key:keyblock.recv_mac (Cstruct.sub bytes 0 stop) in
-              guard (Cstruct.equal mac mac') "invalid mac" >|= fun () ->
+              guard (Cstruct.equal mac mac') "invalid mac" >>| fun () ->
               let dec = Cstruct.to_string (Otr_crypto.crypt ~key:keyblock.recv_aes ~ctr:ctr' encdata) in
               let txt, data =
                 let len = String.length dec in
@@ -126,9 +127,9 @@ module Engine = struct
               in
               (dh_keys, symm, data, ret)
         end
-    | Error Otr_parser.Underflow -> fail "Malformed OTR data message: parser reported underflow"
-    | Error Otr_parser.LeadingZero -> fail "Malformed OTR data message: parser reported leading zero"
-    | Error (Otr_parser.Unknown x) -> fail ("Malformed OTR data message: " ^ x)
+    | Error Otr_parser.Underflow -> Error "Malformed OTR data message: parser reported underflow"
+    | Error Otr_parser.LeadingZero -> Error "Malformed OTR data message: parser reported leading zero"
+    | Error (Otr_parser.Unknown x) -> Error ("Malformed OTR data message: " ^ x)
 
   let encrypt dh_keys symm reveal_macs version instances flags data =
     let symm, reveal = Otr_ratchet.reveal dh_keys symm in
@@ -160,20 +161,20 @@ module Engine = struct
     match ctx.state.message_state with
     | MSGSTATE_PLAINTEXT ->
       begin match Otr_ake.handle_auth ctx bytes with
-        | Ok (ctx, out, warn) -> return (ctx, wrap_b64string out, warn)
+        | Ok (ctx, out, warn) -> Ok (ctx, wrap_b64string out, warn)
         | Error (Otr_ake.Unexpected ignore) ->
           if ignore then
-            return (ctx, None, [])
+            Ok (ctx, None, [])
           else
             let warn = "received encrypted data while in plaintext mode, ignoring unreadable message" in
-            return (ctx,
-                    Some (otr_err_mark ^ " ignoring unreadable message"),
-                    [`Warning warn])
-        | Error (Otr_ake.Unknown x) ->  fail ("AKE error encountered: " ^ x)
+            Ok (ctx,
+                Some (otr_err_mark ^ " ignoring unreadable message"),
+                [`Warning warn])
+        | Error (Otr_ake.Unknown x) ->  Error ("AKE error encountered: " ^ x)
         | Error Otr_ake.VersionMismatch ->
-          return (ctx, None, [`Warning "wrong version in message"])
+          Ok (ctx, None, [`Warning "wrong version in message"])
         | Error Otr_ake.InstanceMismatch ->
-          return (ctx, None, [`Warning "wrong instances in message"])
+          Ok (ctx, None, [`Warning "wrong instances in message"])
       end
     | MSGSTATE_ENCRYPTED enc_data ->
       decrypt enc_data.dh_keys enc_data.symms ctx.version ctx.instances bytes >>= fun (dh_keys, symms, data, ret) ->
@@ -190,9 +191,9 @@ module Engine = struct
           | _ -> (state, out)
       in
       let ctx = { ctx with state } in
-      return (ctx, out, ret @ warn)
+      Ok (ctx, out, ret @ warn)
     | MSGSTATE_FINISHED ->
-      return (ctx, None, [`Warning "received data while in finished state, ignoring"])
+      Ok (ctx, None, [`Warning "received data while in finished state, ignoring"])
 
   (* operations triggered by a user *)
   let start_otr ctx =
@@ -284,14 +285,14 @@ module Engine = struct
   let handle_fragments ctx = function
     | `Fragment_v2 (kn, piece) ->
       if ctx.version = `V2 then
-        return (handle_fragment ctx kn piece)
+        Ok (handle_fragment ctx kn piece)
       else
-        fail "wrong version in V2 fragment"
+        Error "wrong version in V2 fragment"
     | `Fragment_v3 (instances, kn, piece) ->
       if ctx.version = `V3 then
-        return (handle_fragment_v3 ctx instances kn piece)
+        Ok (handle_fragment_v3 ctx instances kn piece)
       else
-        fail "wrong version in V3 fragment"
+        Error "wrong version in V3 fragment"
 
   (* session -> string -> (session * to_send * ret) *)
   let handle ctx bytes =

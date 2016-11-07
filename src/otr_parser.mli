@@ -1,5 +1,5 @@
 type error =
-  | Unknown       of string
+  | Unknown of string
   | Underflow
   | LeadingZero
 

@@ -27,5 +27,6 @@ depends: [
   "result"
   "nocrypto" {>= "0.5.3"}
   "astring"
+  "rresult"
 ]
 available: [ ocaml-version >= "4.02.2" ]

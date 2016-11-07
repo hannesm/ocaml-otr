@@ -1,4 +1,4 @@
-open Result
+open Rresult
 
 open Otr_state
 
@@ -10,7 +10,6 @@ let error_to_string = function
   | UnexpectedMessage -> "unexpected SMP message"
   | InvalidZeroKnowledgeProof -> "invalid zero knowledge proof"
 
-include Otr_control.Or_error_make (struct type err = error end)
 type 'a result = ('a, error) Result.result
 
 let fp = Otr_crypto.OtrDsa.fingerprint
@@ -18,8 +17,8 @@ let my_fp dsa = fp (Nocrypto.Dsa.pub_of_priv dsa)
 
 let start_smp dsa enc_data smp_state ?question secret =
   ( match smp_state with
-    | SMPSTATE_EXPECT1 -> return ()
-    | _ -> fail UnexpectedMessage ) >|= fun () ->
+    | SMPSTATE_EXPECT1 -> Ok ()
+    | _ -> Error UnexpectedMessage ) >>| fun () ->
   let a2, g2a = Otr_crypto.gen_dh_secret ()
   and a3, g3a = Otr_crypto.gen_dh_secret ()
   in
@@ -38,12 +37,12 @@ let start_smp dsa enc_data smp_state ?question secret =
 
 let abort_smp smp_state =
   match smp_state with
-  | SMPSTATE_EXPECT1 -> return (SMPSTATE_EXPECT1, None)
-  | _ -> return (SMPSTATE_EXPECT1, Some (Otr_builder.tlv Otr_packet.SMP_ABORT))
+  | SMPSTATE_EXPECT1 -> Ok (SMPSTATE_EXPECT1, None)
+  | _ -> Ok (SMPSTATE_EXPECT1, Some (Otr_builder.tlv Otr_packet.SMP_ABORT))
 
 let handle_smp_1 data =
   match Otr_parser.parse_datas data 6 with
-  | Error _ -> fail UnexpectedMessage
+  | Error _ -> Error UnexpectedMessage
   | Ok xs ->
     let g2a = List.nth xs 0
     and c2 = List.nth xs 1
@@ -53,9 +52,9 @@ let handle_smp_1 data =
     and d3 = List.nth xs 5
     in
     if Otr_crypto.check_proof g2a c2 d2 1 && Otr_crypto.check_proof g3a c3 d3 2 then
-      return (SMPSTATE_WAIT_FOR_Y (g2a, g3a), None, [ `SMP_awaiting_secret ])
+      Ok (SMPSTATE_WAIT_FOR_Y (g2a, g3a), None, [ `SMP_awaiting_secret ])
     else
-      fail InvalidZeroKnowledgeProof
+      Error InvalidZeroKnowledgeProof
 
 let handle_secret dsa enc_data smp_state secret =
   match smp_state with
@@ -78,13 +77,13 @@ let handle_secret dsa enc_data smp_state secret =
         let out = Otr_builder.tlv ~data:[ g2b ; c2 ; d2 ; g3b ; c3 ; d3 ; pb ; qb ; cp ; d5 ; d6 ] Otr_packet.SMP_MESSAGE_2
         and smp_state = SMPSTATE_EXPECT3 (g3a, g2, g3, b3, pb, qb)
         in
-        return (smp_state, Some out)
-      | _ -> fail UnexpectedMessage )
-  | _ -> fail UnexpectedMessage
+        Ok (smp_state, Some out)
+      | _ -> Error UnexpectedMessage )
+  | _ -> Error UnexpectedMessage
 
 let handle_smp_2 x a2 a3 data =
   match Otr_parser.parse_datas data 11 with
-  | Error _ -> fail UnexpectedMessage
+  | Error _ -> Error UnexpectedMessage
   | Ok xs ->
     let g2b = List.nth xs 0
     and c2 = List.nth xs 1
@@ -116,16 +115,16 @@ let handle_smp_2 x a2 a3 data =
           let out = Otr_builder.tlv ~data:[ pa ; qa ; cp ; d5 ; d6 ; ra ; cr ; d7 ] Otr_packet.SMP_MESSAGE_3
           and smp_state = SMPSTATE_EXPECT4 (g3b, pab, qab, a3)
           in
-          return (smp_state, out)
+          Ok (smp_state, out)
         else
-          fail UnexpectedMessage
-      | _ -> fail UnexpectedMessage
+          Error UnexpectedMessage
+      | _ -> Error UnexpectedMessage
     else
-      fail UnexpectedMessage
+      Error UnexpectedMessage
 
 let handle_smp_3 g3a g2 g3 b3 pb qb data =
   match Otr_parser.parse_datas data 8 with
-  | Error _ -> fail UnexpectedMessage
+  | Error _ -> Error UnexpectedMessage
   | Ok xs ->
     let pa = List.nth xs 0
     and qa = List.nth xs 1
@@ -153,15 +152,15 @@ let handle_smp_3 g3a g2 g3 b3 pb qb data =
             `SMP_failure
         in
         let smp_state = SMPSTATE_EXPECT1 in
-        return (smp_state, out, ret)
+        Ok (smp_state, out, ret)
       else
-        fail UnexpectedMessage
+        Error UnexpectedMessage
     else
-      fail UnexpectedMessage
+      Error UnexpectedMessage
 
 let handle_smp_4 g3b pab qab a3 data =
   match Otr_parser.parse_datas data 3 with
-  | Error _ -> fail UnexpectedMessage
+  | Error _ -> Error UnexpectedMessage
   | Ok xs ->
     let rb = List.nth xs 0
     and cr = List.nth xs 1
@@ -175,37 +174,37 @@ let handle_smp_4 g3b pab qab a3 data =
         else
           `SMP_failure
       in
-      return (SMPSTATE_EXPECT1, ret)
+      Ok (SMPSTATE_EXPECT1, ret)
     else
-      fail UnexpectedMessage
+      Error UnexpectedMessage
 
 let handle_smp smp_state typ data =
   let open Otr_packet in
   match smp_state, typ with
   | SMPSTATE_EXPECT1, SMP_MESSAGE_1 ->
-    handle_smp_1 data >|= fun (s, o, r) ->
+    handle_smp_1 data >>| fun (s, o, r) ->
     (s, o, r)
   | SMPSTATE_EXPECT1, SMP_MESSAGE_1Q ->
     let str = Cstruct.to_string data in
     ( try
         let stop = String.index str '\000' in
         let stop' = succ stop in
-        return (String.sub str 0 stop, Cstruct.shift data stop')
+        Ok (String.sub str 0 stop, Cstruct.shift data stop')
       with
-        Not_found -> fail UnexpectedMessage ) >>= fun (question, data) ->
-    handle_smp_1 data >|= fun (s, o, r) ->
+        Not_found -> Error UnexpectedMessage ) >>= fun (question, data) ->
+    handle_smp_1 data >>| fun (s, o, r) ->
     (s, o, [ `SMP_received_question question ] @ r)
   | SMPSTATE_EXPECT2 (x, a2, a3), SMP_MESSAGE_2 ->
-    handle_smp_2 x a2 a3 data >|= fun (s, o) ->
+    handle_smp_2 x a2 a3 data >>| fun (s, o) ->
     (s, Some o, [])
   | SMPSTATE_EXPECT3 (g3a, g2, g3, b3, pb, qb), SMP_MESSAGE_3 ->
-    handle_smp_3 g3a g2 g3 b3 pb qb data >|= fun (s, o, r) ->
+    handle_smp_3 g3a g2 g3 b3 pb qb data >>| fun (s, o, r) ->
     (s, Some o, [r])
   | SMPSTATE_EXPECT4 (g3b, pab, qab, ra), SMP_MESSAGE_4 ->
-    handle_smp_4 g3b pab qab ra data >|= fun (s, r) ->
+    handle_smp_4 g3b pab qab ra data >>| fun (s, r) ->
     (s, None, [r])
   | _, SMP_ABORT ->
-    return (SMPSTATE_EXPECT1, None, [])
+    Ok (SMPSTATE_EXPECT1, None, [])
   | _, _ ->
     let abort = Otr_builder.tlv SMP_ABORT in
-    return (SMPSTATE_EXPECT1, Some abort, [])
+    Ok (SMPSTATE_EXPECT1, Some abort, [])
