@@ -22,11 +22,11 @@ let parse_query str =
     | _ -> acc
   in
   let parse idx =
-    let _, left = Astring.String.span ~max:idx str in
-    match Astring.String.cut ~sep:"?" left with
+    let _, left = String.span ~max:idx str in
+    match String.cut ~sep:"?" left with
     | None -> ([], None)
     | Some (vs, post) ->
-      let versions = Astring.String.fold_left parse_v [] vs in
+      let versions = String.fold_left parse_v [] vs in
       (List.rev versions, maybe post)
   in
   match String.get str 0, String.get str 1 with
@@ -35,7 +35,7 @@ let parse_query str =
   | _ -> Error (Unknown "no usable version found")
 
 let mark_match sep data =
-  match Astring.String.cut ~sep data with
+  match String.cut ~sep data with
   | Some (pre, post) -> Ok (maybe pre, post)
   | None -> Error (Unknown "parse failed")
 
@@ -53,7 +53,7 @@ type ret = [
 ] [@@deriving sexp]
 
 let parse_data data =
-  match Astring.String.cut ~sep:"." data with
+  match String.cut ~sep:"." data with
   | None -> Error (Unknown "empty OTR message")
   | Some (data, rest) ->
     let b64data = Cstruct.of_string data in
@@ -66,7 +66,7 @@ let parse_plain_tag data =
     if String.length str < 8 then
       (List.rev acc, maybe str)
     else
-      let tag, rest = Astring.String.span ~max:8 str in
+      let tag, rest = String.span ~max:8 str in
       if tag = Otr_state.tag_v2 then
         find_mark rest (`V2 :: acc)
       else if tag = Otr_state.tag_v3 then
@@ -79,7 +79,7 @@ let parse_plain_tag data =
 let guard p e = if p then Ok () else Error e
 
 let parse_fragment data =
-  match Astring.String.cuts ~sep:"," data with
+  match String.cuts ~sep:"," data with
   | k :: n :: piece :: rest ->
     let k = int_of_string k in
     let n = int_of_string n in
@@ -102,9 +102,9 @@ let parse_fragment data =
   | _ -> Error (Unknown "invalid fragment")
 
 let parse_fragment_v3 data =
-  match Astring.String.cut ~sep:"|" data with
+  match String.cut ~sep:"|" data with
   | Some (sender_instance, data) ->
-    ( match Astring.String.cut ~sep:"," data with
+    ( match String.cut ~sep:"," data with
       | Some (receiver_instance, data) ->
         let sender_instance = Scanf.sscanf sender_instance "%lx" (fun x -> x) in
         let receiver_instance = Scanf.sscanf receiver_instance "%lx" (fun x -> x) in
