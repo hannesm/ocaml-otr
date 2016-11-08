@@ -6,9 +6,6 @@ module Engine = struct
 
   let policy ctx p = List.mem p ctx.config.policies
 
-  (* Monadic control-flow core. *)
-  type error = string
-
   let handle_cleartext ctx =
     match ctx.state.message_state with
     | MSGSTATE_PLAINTEXT when policy ctx `REQUIRE_ENCRYPTION -> [`Warning "received unencrypted data"]
