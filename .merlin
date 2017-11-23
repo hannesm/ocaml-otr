@@ -9,7 +9,6 @@ PKG cstruct
 PKG sexplib
 PKG nocrypto
 PKG astring
-PKG result
 PKG rresult
 PKG cstruct.ppx
 

@@ -9,8 +9,6 @@ type error =
   | VersionMismatch
   | InstanceMismatch
 
-type 'a result = ('a, error) Result.result
-
 let instance_tag () =
   (* 32 bit random, >= 0x00000100 *)
   let tag = Cstruct.BE.get_uint32 (Nocrypto.Rng.generate 4) 0 in

@@ -10,8 +10,6 @@ let error_to_string = function
   | UnexpectedMessage -> "unexpected SMP message"
   | InvalidZeroKnowledgeProof -> "invalid zero knowledge proof"
 
-type 'a result = ('a, error) Result.result
-
 let fp = Otr_crypto.OtrDsa.fingerprint
 let my_fp dsa = fp (Nocrypto.Dsa.pub_of_priv dsa)
 

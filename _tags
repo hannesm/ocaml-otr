@@ -1,10 +1,10 @@
 true : color(always), bin_annot, safe_string, principal
 true : warn(+A-4-41-44-58)
-true : package(result rresult cstruct nocrypto)
+true : package(rresult cstruct nocrypto)
 "src" : include
 
-<src/otr_packet.{ml,mli}>: package(sexplib), package(cstruct.ppx)
-<src/otr_parser.{ml,mli}>: package(astring), package(ppx_sexp_conv)
-<src/otr_state.{ml,mli}>: package(sexplib), package(ppx_sexp_conv)
+<src/otr_packet.{ml,mli}>: package(sexplib cstruct.ppx)
+<src/otr_parser.{ml,mli}>: package(astring ppx_sexp_conv)
+<src/otr_state.{ml,mli}>: package(sexplib ppx_sexp_conv)
 
 <feedback.{ml,native,byte}>: package(astring)

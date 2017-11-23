@@ -9,10 +9,7 @@ type error =
   | Underflow
   | LeadingZero
 
-type 'a result = ('a, error) Result.result
-
-let maybe a =
-  if a = "" then None else Some a
+let maybe a = if a = "" then None else Some a
 
 (* parse query string *)
 let parse_query str =
