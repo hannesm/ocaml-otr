@@ -1,3 +1,8 @@
+## 0.3.4 (2017-11-23)
+
+* prefix modules with "Otr_"
+* drop OCaml < 4.03.0 support
+
 ## 0.3.3 (2016-07-17)
 
 * improve interop (instance tags) #10
