@@ -5,7 +5,7 @@ open Topkg
 
 let () =
   let opams =
-    [ Pkg.opam_file "opam" ~lint_deps_excluding:(Some ["ppx_tools"]) ]
+    [ Pkg.opam_file "opam" ~lint_deps_excluding:(Some ["ppx_deriving"]) ]
   in
   Pkg.describe ~opams "otr" @@ fun _c ->
   Ok [
