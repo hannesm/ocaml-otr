@@ -20,10 +20,10 @@ depends: [
   "ocamlbuild" {build}
   "topkg" {build}
   "ppx_deriving" {build}
-  "ppx_sexp_conv" {build}
+  "ppx_sexp_conv" {build & < "v0.11.0"}
   "ppx_cstruct" {build}
   "cstruct" {>= "1.9.0"}
-  "sexplib" {< "v0.11.0"}
+  "sexplib"
   "nocrypto" {>= "0.5.3"}
   "astring"
   "rresult"
