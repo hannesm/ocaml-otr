@@ -63,10 +63,7 @@ module AES_CTR = Cipher_block.AES.CTR
 
 let crypt ~key ~ctr msg =
   let ctr =
-    let buf = Cstruct.create 16 in
-    Cstruct.memset buf 0 ;
-    Cstruct.BE.set_uint64 buf 0 ctr ;
-    buf
+    Nocrypto.Cipher_block.Counters.C128be.of_words (ctr, 0L)
   in
   AES_CTR.encrypt ~key:(AES_CTR.of_secret key) ~ctr msg
 
