@@ -14,9 +14,6 @@ type ret = [
   | `Fragment_v3 of (int32 * int32) * (int * int) * string
 ]
 
-val ret_of_sexp : Sexplib.Type.t -> ret
-val sexp_of_ret : ret -> Sexplib.Type.t
-
 val classify_input : string -> ret
 
 val decode_data : Cstruct.t -> (Cstruct.t * Cstruct.t, error) result

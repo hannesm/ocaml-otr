@@ -36,8 +36,6 @@ let mark_match sep data =
   | Some (pre, post) -> Ok (maybe pre, post)
   | None -> Error (Unknown "parse failed")
 
-open Sexplib.Conv
-
 type ret = [
   | `Data of Cstruct.t
   | `ParseError of string
@@ -47,7 +45,7 @@ type ret = [
   | `String of string
   | `Fragment_v2 of (int * int) * string
   | `Fragment_v3 of (int32 * int32) * (int * int) * string
-] [@@deriving sexp]
+]
 
 let parse_data data =
   match String.cut ~sep:"." data with

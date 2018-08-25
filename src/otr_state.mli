@@ -10,7 +10,7 @@ type ret = [
   | `SMP_failure
 ]
 
-type dh_params = (Nocrypto.Dh.secret * Cstruct.t) [@@deriving sexp]
+type dh_params = (Nocrypto.Dh.secret * Cstruct.t)
 
 type dh_keys = {
   dh          : dh_params ;
@@ -19,7 +19,7 @@ type dh_keys = {
   gy          : Cstruct.t ;
   previous_gy : Cstruct.t ;
   their_keyid : int32 ;
-} [@@deriving sexp]
+}
 
 type symmetric_keys = {
   send_aes : Cstruct.t ;
@@ -28,9 +28,9 @@ type symmetric_keys = {
   recv_aes : Cstruct.t ;
   recv_mac : Cstruct.t ;
   recv_ctr : int64 ;
-} [@@deriving sexp]
+}
 
-type symms = (int32 * int32 * symmetric_keys) list [@@deriving sexp]
+type symms = (int32 * int32 * symmetric_keys) list
 
 type enc_data = {
   dh_keys   : dh_keys ;
@@ -38,20 +38,18 @@ type enc_data = {
   their_dsa : Nocrypto.Dsa.pub ;
   ssid      : Cstruct.t ;
   high      : bool ;
-} [@@deriving sexp]
+}
 
 type message_state =
   | MSGSTATE_PLAINTEXT
   | MSGSTATE_ENCRYPTED of enc_data
   | MSGSTATE_FINISHED
-[@@deriving sexp]
 
 type auth_state =
   | AUTHSTATE_NONE
   | AUTHSTATE_AWAITING_DHKEY of Cstruct.t * Cstruct.t * dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_REVEALSIG of dh_params * Cstruct.t
   | AUTHSTATE_AWAITING_SIG of Cstruct.t * (Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t) * dh_params * Cstruct.t
-[@@deriving sexp]
 
 type smp_state =
   | SMPSTATE_WAIT_FOR_Y of Cstruct.t * Cstruct.t
@@ -59,7 +57,6 @@ type smp_state =
   | SMPSTATE_EXPECT2 of Cstruct.t * Nocrypto.Dh.secret * Nocrypto.Dh.secret
   | SMPSTATE_EXPECT3 of Cstruct.t * Cstruct.t * Cstruct.t * Nocrypto.Dh.secret * Cstruct.t * Cstruct.t
   | SMPSTATE_EXPECT4 of Cstruct.t * Cstruct.t * Cstruct.t * Nocrypto.Dh.secret
-[@@deriving sexp]
 
 type policy = [
   | `REQUIRE_ENCRYPTION

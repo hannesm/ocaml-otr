@@ -10,6 +10,3 @@ PKG sexplib
 PKG nocrypto
 PKG astring
 PKG rresult
-PKG cstruct.ppx
-
-PKG ppx_sexp_conv
