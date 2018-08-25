@@ -1,3 +1,7 @@
+## 0.3.5 (2018-08-25)
+
+* remove usage of ppx
+
 ## 0.3.4 (2017-11-23)
 
 * prefix modules with "Otr_"
