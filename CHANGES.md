@@ -1,3 +1,7 @@
+## 0.3.6 (2019-02-16)
+
+* move build system to dune
+
 ## 0.3.5 (2018-08-25)
 
 * remove usage of ppx
