@@ -1,8 +1,0 @@
-description = "Off-the-record protocol implementation in OCaml"
-version = "%%VERSION_NUM%%"
-requires = "cstruct nocrypto astring sexplib rresult"
-archive(byte) = "otr.cma"
-archive(native) = "otr.cmxa"
-plugin(byte) = "otr.cma"
-plugin(native) = "otr.cmxs"
-exists_if = "otr.cma"

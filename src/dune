@@ -1,0 +1,4 @@
+(library
+  (name otr)
+  (public_name otr)
+  (libraries cstruct nocrypto sexplib0 astring rresult))

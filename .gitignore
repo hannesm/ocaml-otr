@@ -1,5 +1,5 @@
 _build/
-_tests/
 *.byte
 *.native
 *.install
+.merlin

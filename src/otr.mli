@@ -30,7 +30,7 @@
 (** States and types *)
 module State : sig
 
-  (** {1 Type definitions and predicates} *)
+  (** {2 Type definitions and predicates} *)
 
   (** Return values of functions in the {!Engine} module. *)
   type ret = [
@@ -130,7 +130,7 @@ end
 (** Message processing *)
 module Engine : sig
 
-  (** {1 Message processing} *)
+  (** {2 Message processing} *)
 
   (** Either when an OTR session should be established, or if a
       message containing OTR data is received, the corresponding
@@ -170,8 +170,8 @@ module Engine : sig
       [session'] should be used in subsequent calls. *)
   val handle : State.session -> string -> State.session * string option * State.ret list
 
-  (** [start_smp session ~question shared_secret] is [session', out,
-      ret], which starts the
+  (** [start_smp session ~question shared_secret] is
+      [session', out, ret], which starts the
       {{:https://en.wikipedia.org/wiki/Socialist_millionaire}
       socialist millionairs problem} if the [session] is already
       established, using potentially the [question] and
@@ -197,7 +197,7 @@ end
 
 (** Utilities *)
 module Utils : sig
-  (** {1 Fingerprint Utilities} *)
+  (** {2 Fingerprint Utilities} *)
 
   (** An OTR fingerprint is the [`SHA1] hash of the public key
       prepended with the key type. *)
