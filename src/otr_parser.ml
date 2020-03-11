@@ -51,10 +51,9 @@ let parse_data data =
   match String.cut ~sep:"." data with
   | None -> Error (Unknown "empty OTR message")
   | Some (data, rest) ->
-    let b64data = Cstruct.of_string data in
-    match Nocrypto.Base64.decode b64data with
-    | None -> Error (Unknown "bad base64 data")
-    | Some x -> Ok (x, maybe rest)
+    match Base64.decode data with
+    | Ok x -> Ok (Cstruct.of_string x, maybe rest)
+    | Error (`Msg m) -> Error (Unknown ("bad base64 data: " ^ m))
 
 let parse_plain_tag data =
   let rec find_mark str acc =
@@ -198,7 +197,8 @@ let parse_signature_data buf =
   guard (get_uint8 gg 0 <> 0) LeadingZero >>= fun () ->
   decode_data buf >>= fun (y, buf) ->
   guard (get_uint8 y 0 <> 0) LeadingZero >>= fun () ->
-  let key = Otr_crypto.OtrDsa.pub ~p ~q ~gg ~y in
+  R.reword_error (function `Msg m -> Unknown m)
+    (Otr_crypto.OtrDsa.pub ~p ~q ~gg ~y) >>= fun key ->
   guard (len buf = 44) (Unknown "signature lengh") >>| fun () ->
   let keyida = BE.get_uint32 buf 0 in
   let buf = shift buf 4 in

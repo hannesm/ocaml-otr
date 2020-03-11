@@ -151,8 +151,8 @@ module Engine = struct
   let wrap_b64string = function
     | None -> None
     | Some m ->
-      let encoded = Nocrypto.Base64.encode m in
-      Some (otr_mark ^ Cstruct.to_string encoded ^ ".")
+      let encoded = Base64.encode_string (Cstruct.to_string m) in
+      Some (otr_mark ^ encoded ^ ".")
 
   let handle_data ctx bytes =
     match ctx.state.message_state with
@@ -348,6 +348,6 @@ module Utils = struct
     | _ -> None
 
   let own_fingerprint dsa =
-    fingerprint (Nocrypto.Dsa.pub_of_priv dsa)
+    fingerprint (Mirage_crypto_pk.Dsa.pub_of_priv dsa)
 end
 

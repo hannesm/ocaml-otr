@@ -10,9 +10,11 @@ depends: [
   "dune" {build}
   "cstruct" {>= "1.9.0"}
   "sexplib0"
-  "nocrypto" {>= "0.5.3"}
+  "mirage-crypto"
+  "mirage-crypto-pk"
   "astring"
   "rresult"
+  "mirage-crypto-rng" {with-test}
 ]
 build: [
   ["dune" "subst"] {pinned}

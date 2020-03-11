@@ -11,7 +11,7 @@ type error =
 
 let instance_tag () =
   (* 32 bit random, >= 0x00000100 *)
-  let tag = Cstruct.BE.get_uint32 (Nocrypto.Rng.generate 4) 0 in
+  let tag = Cstruct.BE.get_uint32 (Mirage_crypto_rng.generate 4) 0 in
   Int32.(logor tag 0x100l)
 
 let select_version ours theirs =
@@ -32,9 +32,9 @@ let safe_parse f x =
   | Error (Otr_parser.Unknown x) -> Error (Unknown ("error while parsing: " ^ x))
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =
-  let (<+>) = Nocrypto.Uncommon.Cs.(<+>) in
+  let (<+>) = Mirage_crypto.Uncommon.Cs.(<+>) in
   let pub =
-    let pub = Nocrypto.Dsa.pub_of_priv priv in
+    let pub = Mirage_crypto_pk.Dsa.pub_of_priv priv in
     Otr_crypto.OtrDsa.to_wire pub
   in
   let sigb =

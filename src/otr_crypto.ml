@@ -1,23 +1,20 @@
-
-open Nocrypto
-
 let encode_mpi n =
-  Otr_builder.encode_data (Numeric.Z.to_cstruct_be n)
+  Otr_builder.encode_data (Mirage_crypto_pk.Z_extra.to_cstruct_be n)
 
 let (<+>) = Cstruct.append
 
 let mpi_gt h1 h2 =
-  Numeric.Z.(of_cstruct_be h1 > of_cstruct_be h2)
+  Mirage_crypto_pk.Z_extra.(of_cstruct_be h1 > of_cstruct_be h2)
 
 module OtrDsa = struct
-  open Nocrypto
-  open Nocrypto.Dsa
+  open Mirage_crypto_pk.Dsa
 
   let pub ~p ~q ~gg ~y =
-    let z_of_cs = Numeric.Z.of_cstruct_be ?bits:None in
-    { p = z_of_cs p ; q = z_of_cs q ; gg = z_of_cs gg ; y = z_of_cs y }
+    (* TODO check whether they must be FIPS *)
+    let z_of_cs = Mirage_crypto_pk.Z_extra.of_cstruct_be ?bits:None in
+    Mirage_crypto_pk.Dsa.pub ~p:(z_of_cs p) ~q:(z_of_cs q) ~gg:(z_of_cs gg) ~y:(z_of_cs y) ()
 
-  let to_wire ?notag ({ p ; q ; gg ; y } : Nocrypto.Dsa.pub) =
+  let to_wire ?notag ({ p ; q ; gg ; y } : pub) =
     let tag =
       match notag with
       | None   -> let buf = Cstruct.create 2 in Cstruct.memset buf 0 ; buf
@@ -27,19 +24,19 @@ module OtrDsa = struct
 
   let fingerprint k =
     (* only handling key type 0000, DSA *)
-    Hash.digest `SHA1 (to_wire ~notag:() k)
+    Mirage_crypto.Hash.digest `SHA1 (to_wire ~notag:() k)
 
   let signature ~key data =
     let r, s = sign ~key (massage ~key:(pub_of_priv key) data) in
     r <+> s
 
   let verify ~key rs data =
-    Dsa.verify ~key rs (massage ~key data)
+    verify ~key rs (massage ~key data)
 end
 
 let derive_keys data =
   let secbytes = Otr_builder.encode_data data in
-  let h2 b = Hash.digest `SHA256 ((Cstruct.of_string b) <+> secbytes) in
+  let h2 b = Mirage_crypto.Hash.digest `SHA256 ((Cstruct.of_string b) <+> secbytes) in
   let ssid = Cstruct.sub (h2 "\000") 0 8 in
   let c, c' = Cstruct.split (h2 "\001") 16 in
   let m1 = h2 "\002" in
@@ -52,49 +49,44 @@ let derive_keys data =
 let data_keys data high =
   let secbytes = Otr_builder.encode_data data in
   let send, recv = if high then ("\001", "\002") else ("\002", "\001") in
-  let h1 b = Hash.digest `SHA1 ((Cstruct.of_string b) <+> secbytes) in
+  let h1 b = Mirage_crypto.Hash.digest `SHA1 ((Cstruct.of_string b) <+> secbytes) in
   let sendaes = Cstruct.sub (h1 send) 0 16 in
-  let sendmac = Hash.digest `SHA1 sendaes in
+  let sendmac = Mirage_crypto.Hash.digest `SHA1 sendaes in
   let recvaes = Cstruct.sub (h1 recv) 0 16 in
-  let recvmac = Hash.digest `SHA1 recvaes in
+  let recvmac = Mirage_crypto.Hash.digest `SHA1 recvaes in
   (sendaes, sendmac, recvaes, recvmac)
 
-module AES_CTR = Cipher_block.AES.CTR
+module AES_CTR = Mirage_crypto.Cipher_block.AES.CTR
 
 let crypt ~key ~ctr msg =
-  let ctr =
-    let buf = Cstruct.create 16 in
-    Cstruct.memset buf 0 ;
-    Cstruct.BE.set_uint64 buf 0 ctr ;
-    buf
-  in
-  AES_CTR.encrypt ~key:(AES_CTR.of_secret key) ~ctr msg
+  AES_CTR.encrypt ~key:(AES_CTR.of_secret key) ~ctr:(0L, ctr) msg
 
 let gen_symmetric_key () =
-  Rng.generate 16
+  Mirage_crypto_rng.generate 16
 
 let hash data =
-  Hash.digest `SHA256 data
+  Mirage_crypto.Hash.digest `SHA256 data
 
 let mac ~key data =
   let data= Cstruct.concat data in
-  Hash.mac `SHA256 ~key data
+  Mirage_crypto.Hash.mac `SHA256 ~key data
 
 let mac160 ~key data =
   let buf = mac ~key [ Otr_builder.encode_data data ] in
   Cstruct.sub buf 0 20
 
-let sha1mac = Hash.mac `SHA1
+let sha1mac = Mirage_crypto.Hash.mac `SHA1
 
-let group = Dh.Group.oakley_5
+let group = Mirage_crypto_pk.Dh.Group.oakley_5
 
 let gen_dh_secret () =
-  Dh.gen_key group
+  Mirage_crypto_pk.Dh.gen_key group
 
-let dh_shared = Dh.shared group
+let dh_shared = Mirage_crypto_pk.Dh.shared
 
 let check_gy gy =
-  let gy = Numeric.Z.of_cstruct_be gy in
+  let open Mirage_crypto_pk in
+  let gy = Z_extra.of_cstruct_be gy in
   gy <= Z.one || gy >= Z.(pred group.Dh.p) || gy = group.Dh.gg
 
 let smp_hash version mpis =
@@ -102,7 +94,7 @@ let smp_hash version mpis =
   Cstruct.set_uint8 buf 0 version ;
   hash (Cstruct.concat (buf :: List.map encode_mpi mpis))
 
-let oakley_5_q = Z.((group.Dh.p - one) / (succ one))
+let oakley_5_q = Z.((group.Mirage_crypto_pk.Dh.p - one) / (succ one))
 
 let minus_mult_q a b c =
   (* OCaml mod: -5 mod 4 -> -1, but we need 3 instead *)
@@ -113,39 +105,42 @@ let minus_mult_q a b c =
     res
 
 let proof_knowledge sec static =
+  let open Mirage_crypto_pk in
   let r, pub = gen_dh_secret () in
-  let pub = Numeric.Z.of_cstruct_be pub in
+  let pub = Z_extra.of_cstruct_be pub in
   let c = smp_hash static [pub] in
-  let cz = Numeric.Z.of_cstruct_be c in
+  let cz = Z_extra.of_cstruct_be c in
   let d = minus_mult_q r.Dh.x sec.Dh.x cz in
-  (c, Numeric.Z.to_cstruct_be d)
+  (c, Z_extra.to_cstruct_be d)
 
 let powZ gz expz =
-  Z.(powm gz expz group.Dh.p)
+  Z.(powm gz expz group.Mirage_crypto_pk.Dh.p)
 
 let pow_s g exp =
-  let gz = Numeric.Z.of_cstruct_be g
-  and expz = exp.Dh.x
+  let gz = Mirage_crypto_pk.Z_extra.of_cstruct_be g
+  and expz = exp.Mirage_crypto_pk.Dh.x
   in
   let res = powZ gz expz in
-  Numeric.Z.to_cstruct_be res
+  Mirage_crypto_pk.Z_extra.to_cstruct_be res
 
 let mult_powZ a b e =
   let b = powZ b e in
-  Z.(a * b mod group.Dh.p)
+  Z.(a * b mod group.Mirage_crypto_pk.Dh.p)
 
 let mult_pow a g exp =
-  let az = Numeric.Z.of_cstruct_be a
-  and gz = Numeric.Z.of_cstruct_be g
-  and expz = Numeric.Z.of_cstruct_be exp
+  let open Mirage_crypto_pk in
+  let az = Z_extra.of_cstruct_be a
+  and gz = Z_extra.of_cstruct_be g
+  and expz = Z_extra.of_cstruct_be exp
   in
   let res = mult_powZ az gz expz in
-  Numeric.Z.to_cstruct_be res
+  Z_extra.to_cstruct_be res
 
 let check_proof g c d static =
-  let gz = Numeric.Z.of_cstruct_be g
-  and cz = Numeric.Z.of_cstruct_be c
-  and dz = Numeric.Z.of_cstruct_be d
+  let open Mirage_crypto_pk in
+  let gz = Z_extra.of_cstruct_be g
+  and cz = Z_extra.of_cstruct_be c
+  and dz = Z_extra.of_cstruct_be d
   in
   let m = group.Dh.p in
   let pub = Z.(powZ (succ one) dz * powZ gz cz mod m) in
@@ -153,34 +148,36 @@ let check_proof g c d static =
   Cstruct.equal c' c
 
 let proof_equal_coords g2 g3 r y static =
+  let open Mirage_crypto_pk in
   let r1, gr1 = gen_dh_secret ()
   and r2, _ = gen_dh_secret ()
   in
-  let a = powZ (Numeric.Z.of_cstruct_be g3) r1.Dh.x
-  and b = mult_powZ (Numeric.Z.of_cstruct_be gr1) (Numeric.Z.of_cstruct_be g2) r2.Dh.x
+  let a = powZ (Z_extra.of_cstruct_be g3) r1.Dh.x
+  and b = mult_powZ (Z_extra.of_cstruct_be gr1) (Z_extra.of_cstruct_be g2) r2.Dh.x
   in
   let cp = smp_hash static [ a ; b ] in
-  let cpz = Numeric.Z.of_cstruct_be cp in
+  let cpz = Z_extra.of_cstruct_be cp in
   let d1 = minus_mult_q r1.Dh.x r.Dh.x cpz
-  and d2 = minus_mult_q r2.Dh.x (Numeric.Z.of_cstruct_be y) cpz
+  and d2 = minus_mult_q r2.Dh.x (Z_extra.of_cstruct_be y) cpz
   in
-  (cp, Numeric.Z.to_cstruct_be d1, Numeric.Z.to_cstruct_be d2)
+  (cp, Z_extra.to_cstruct_be d1, Z_extra.to_cstruct_be d2)
 
 let check_equal_coords g2 g3 pb qb cp d1 d2 static =
-  let pbz = Numeric.Z.of_cstruct_be pb
-  and qbz = Numeric.Z.of_cstruct_be qb
-  and cpz = Numeric.Z.of_cstruct_be cp
+  let open Mirage_crypto_pk in
+  let pbz = Z_extra.of_cstruct_be pb
+  and qbz = Z_extra.of_cstruct_be qb
+  and cpz = Z_extra.of_cstruct_be cp
   in
   let check n = Z.(n > one && n <= (pred (pred group.Dh.p))) in
   if check pbz && check qbz then
     let a =
-      let a = powZ (Numeric.Z.of_cstruct_be g3) (Numeric.Z.of_cstruct_be d1)
+      let a = powZ (Z_extra.of_cstruct_be g3) (Z_extra.of_cstruct_be d1)
       and b = powZ pbz cpz
       in
       Z.(a * b mod group.Dh.p)
     and b =
-      let a = powZ Z.(succ one) (Numeric.Z.of_cstruct_be d1)
-      and b = powZ (Numeric.Z.of_cstruct_be g2) (Numeric.Z.of_cstruct_be d2)
+      let a = powZ Z.(succ one) (Z_extra.of_cstruct_be d1)
+      and b = powZ (Z_extra.of_cstruct_be g2) (Z_extra.of_cstruct_be d2)
       and c = powZ qbz cpz
       in
       Z.(a * b * c mod group.Dh.p)
@@ -191,31 +188,33 @@ let check_equal_coords g2 g3 pb qb cp d1 d2 static =
     false
 
 let proof_eq_logs p a static =
-  let pz = Numeric.Z.of_cstruct_be p in
+  let open Mirage_crypto_pk in
+  let pz = Z_extra.of_cstruct_be p in
   let r, gr = gen_dh_secret () in
   let cr =
-    let a = Numeric.Z.of_cstruct_be gr
+    let a = Z_extra.of_cstruct_be gr
     and b = powZ pz r.Dh.x
     in
     smp_hash static [ a ; b ]
   in
-  let d = minus_mult_q r.Dh.x a.Dh.x (Numeric.Z.of_cstruct_be cr) in
-  (cr, Numeric.Z.to_cstruct_be d)
+  let d = minus_mult_q r.Dh.x a.Dh.x (Z_extra.of_cstruct_be cr) in
+  (cr, Z_extra.to_cstruct_be d)
 
 let check_eq_logs c g p d r static =
-  let rz = Numeric.Z.of_cstruct_be r in
+  let open Mirage_crypto_pk in
+  let rz = Z_extra.of_cstruct_be r in
   let check n = Z.(n > one && n <= (pred (pred group.Dh.p))) in
   if check rz then
-    let dz = Numeric.Z.of_cstruct_be d
-    and cz = Numeric.Z.of_cstruct_be c
+    let dz = Z_extra.of_cstruct_be d
+    and cz = Z_extra.of_cstruct_be c
     in
     let a =
       let a = powZ Z.(succ one) dz
-      and b = powZ (Numeric.Z.of_cstruct_be g) cz
+      and b = powZ (Z_extra.of_cstruct_be g) cz
       in
       Z.(a * b mod group.Dh.p)
     and b =
-      let a = powZ (Numeric.Z.of_cstruct_be p) dz
+      let a = powZ (Z_extra.of_cstruct_be p) dz
       and b = powZ rz cz
       in
       Z.(a * b mod group.Dh.p)
@@ -226,11 +225,12 @@ let check_eq_logs c g p d r static =
     false
 
 let compute_p pa pb =
-  let paz = Numeric.Z.of_cstruct_be pa
-  and pbz = Numeric.Z.of_cstruct_be pb
+  let open Mirage_crypto_pk in
+  let paz = Z_extra.of_cstruct_be pa
+  and pbz = Z_extra.of_cstruct_be pb
   in
   let p = Z.(paz * (invert pbz group.Dh.p) mod group.Dh.p) in
-  Numeric.Z.to_cstruct_be p
+  Z_extra.to_cstruct_be p
 
 let prepare_secret initiator_fp responder_fp ssid secret =
   let version = Cstruct.of_string "\001" in

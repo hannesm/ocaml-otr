@@ -1,4 +1,4 @@
 (library
   (name otr)
   (public_name otr)
-  (libraries cstruct nocrypto sexplib0 astring rresult))
+  (libraries cstruct mirage-crypto mirage-crypto-pk sexplib0 astring rresult base64))

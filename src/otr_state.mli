@@ -10,7 +10,7 @@ type ret = [
   | `SMP_failure
 ]
 
-type dh_params = (Nocrypto.Dh.secret * Cstruct.t)
+type dh_params = (Mirage_crypto_pk.Dh.secret * Cstruct.t)
 
 type dh_keys = {
   dh          : dh_params ;
@@ -35,7 +35,7 @@ type symms = (int32 * int32 * symmetric_keys) list
 type enc_data = {
   dh_keys   : dh_keys ;
   symms     : symms ;
-  their_dsa : Nocrypto.Dsa.pub ;
+  their_dsa : Mirage_crypto_pk.Dsa.pub ;
   ssid      : Cstruct.t ;
   high      : bool ;
 }
@@ -54,9 +54,9 @@ type auth_state =
 type smp_state =
   | SMPSTATE_WAIT_FOR_Y of Cstruct.t * Cstruct.t
   | SMPSTATE_EXPECT1
-  | SMPSTATE_EXPECT2 of Cstruct.t * Nocrypto.Dh.secret * Nocrypto.Dh.secret
-  | SMPSTATE_EXPECT3 of Cstruct.t * Cstruct.t * Cstruct.t * Nocrypto.Dh.secret * Cstruct.t * Cstruct.t
-  | SMPSTATE_EXPECT4 of Cstruct.t * Cstruct.t * Cstruct.t * Nocrypto.Dh.secret
+  | SMPSTATE_EXPECT2 of Cstruct.t * Mirage_crypto_pk.Dh.secret * Mirage_crypto_pk.Dh.secret
+  | SMPSTATE_EXPECT3 of Cstruct.t * Cstruct.t * Cstruct.t * Mirage_crypto_pk.Dh.secret * Cstruct.t * Cstruct.t
+  | SMPSTATE_EXPECT4 of Cstruct.t * Cstruct.t * Cstruct.t * Mirage_crypto_pk.Dh.secret
 
 type policy = [
   | `REQUIRE_ENCRYPTION
@@ -107,7 +107,7 @@ type session = {
   version : version ;
   state : state ;
   config : config ;
-  dsa : Nocrypto.Dsa.priv ;
+  dsa : Mirage_crypto_pk.Dsa.priv ;
   fragments : ((int * int) * string) ;
 }
 
@@ -123,9 +123,9 @@ val version : session -> version
 
 val is_encrypted : session -> bool
 
-val their_dsa : session -> Nocrypto.Dsa.pub option
+val their_dsa : session -> Mirage_crypto_pk.Dsa.pub option
 
-val new_session : config -> Nocrypto.Dsa.priv -> unit -> session
+val new_session : config -> Mirage_crypto_pk.Dsa.priv -> unit -> session
 
 val update_config : config -> session -> session
 

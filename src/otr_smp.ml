@@ -11,7 +11,7 @@ let error_to_string = function
   | InvalidZeroKnowledgeProof -> "invalid zero knowledge proof"
 
 let fp = Otr_crypto.OtrDsa.fingerprint
-let my_fp dsa = fp (Nocrypto.Dsa.pub_of_priv dsa)
+let my_fp dsa = fp (Mirage_crypto_pk.Dsa.pub_of_priv dsa)
 
 let start_smp dsa enc_data smp_state ?question secret =
   ( match smp_state with

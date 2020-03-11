@@ -25,10 +25,8 @@ let recv ctx data str =
   ctx
 
 let start_session _ =
-  let buf = Cstruct.create 16 in
-  Nocrypto.Rng.reseed buf ;
-  let keya = Nocrypto.Dsa.generate `Fips1024 in
-  let keyb = Nocrypto.Dsa.generate `Fips1024 in
+  let keya = Mirage_crypto_pk.Dsa.generate `Fips1024 in
+  let keyb = Mirage_crypto_pk.Dsa.generate `Fips1024 in
   let cfga = config all_versions all_policies in
   let cfgb = config all_versions all_policies in
   let ctxa = new_session cfga keya () in
@@ -135,6 +133,7 @@ let start_session _ =
     | _ -> assert false ) *)
 
 let _ =
+  Mirage_crypto_rng_unix.initialize ();
   for _i = 0 to 10 do
     start_session ()
   done

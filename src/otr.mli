@@ -115,11 +115,11 @@ module State : sig
 
   (** [their_dsa session] is [dsa], the public DSA key used by the
       communication partner (if the session is established). *)
-  val their_dsa : session -> Nocrypto.Dsa.pub option
+  val their_dsa : session -> Mirage_crypto_pk.Dsa.pub option
 
   (** [new_session configuration dsa ()] is [session], a fresh session given
       the [configuration] and [dsa] private key. *)
-  val new_session : config -> Nocrypto.Dsa.priv -> unit -> session
+  val new_session : config -> Mirage_crypto_pk.Dsa.priv -> unit -> session
 
   (** [update_config config session] is [session], the [session]
       adjusted to the [config].  Note: the [session] might not conform
@@ -208,5 +208,5 @@ module Utils : sig
 
   (** [own_fingerprint dsa] is [fp], the fingerprint of the private
       DSA key. *)
-  val own_fingerprint : Nocrypto.Dsa.priv -> string
+  val own_fingerprint : Mirage_crypto_pk.Dsa.priv -> string
 end
