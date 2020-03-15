@@ -1,3 +1,7 @@
+## v0.3.8 (2020-03-15)
+
+* fix crypt function (0.3.7 used the counter wrong, the 0 should be the other half)
+
 ## v0.3.7 (2020-03-11)
 
 * use mirage-crypto instead of nocrypto
