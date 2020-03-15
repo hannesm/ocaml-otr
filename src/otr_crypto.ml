@@ -59,7 +59,7 @@ let data_keys data high =
 module AES_CTR = Mirage_crypto.Cipher_block.AES.CTR
 
 let crypt ~key ~ctr msg =
-  AES_CTR.encrypt ~key:(AES_CTR.of_secret key) ~ctr:(0L, ctr) msg
+  AES_CTR.encrypt ~key:(AES_CTR.of_secret key) ~ctr:(ctr, 0L) msg
 
 let gen_symmetric_key () =
   Mirage_crypto_rng.generate 16
