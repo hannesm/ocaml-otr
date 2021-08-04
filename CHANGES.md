@@ -1,3 +1,7 @@
+## v0.3.9 (2021-08-04)
+
+* use Cstruct.length instead of deprecated Cstruct.len (requires cstruct 6.0.0)
+
 ## v0.3.8 (2020-03-15)
 
 * fix crypt function (0.3.7 used the counter wrong, the 0 should be the other half)
