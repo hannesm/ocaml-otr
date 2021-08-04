@@ -144,7 +144,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
 let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
   safe_parse Otr_parser.decode_data signature >>= fun (enc_data, mac) ->
-  guard (Cstruct.len mac = 20) (Unknown "mac has wrong length") >>= fun () ->
+  guard (Cstruct.length mac = 20) (Unknown "mac has wrong length") >>= fun () ->
   let mymac = Otr_crypto.mac160 ~key:m2' enc_data in
   guard (Cstruct.equal mac mymac) (Unknown "mac do not match") >>= fun () ->
   let dec = Otr_crypto.crypt ~key:c' ~ctr:0L enc_data in
@@ -162,8 +162,8 @@ let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   ({ ctx with state }, format_ssid ssid high)
 
 let handle_commit_await_key ctx dh_c h version instances buf =
-  guard (Cstruct.len buf >= 32) (Unknown "underflow") >>= fun () ->
-  let their_hash = Cstruct.sub buf (Cstruct.len buf - 32) 32 in
+  guard (Cstruct.length buf >= 32) (Unknown "underflow") >>= fun () ->
+  let their_hash = Cstruct.sub buf (Cstruct.length buf - 32) 32 in
   if Otr_crypto.mpi_gt h their_hash then
     Ok (ctx, Some dh_c)
   else

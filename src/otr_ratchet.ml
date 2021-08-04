@@ -13,7 +13,7 @@ let check_keys dh_keys send recv gy =
     match
       Otr_crypto.check_gy gy,
       dh_keys.their_keyid = Int32.succ send,
-      Cstruct.len dh_keys.previous_gy = 0
+      Cstruct.length dh_keys.previous_gy = 0
     with
     | true, _   , _    -> Some "invalid gy"
     | _   , true, true -> Some "invalid previous gy"

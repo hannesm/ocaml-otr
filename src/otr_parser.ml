@@ -151,15 +151,15 @@ let classify_input bytes =
 
 (* real OTR data parsing *)
 let decode_data buf =
-  guard (len buf >= 4) Underflow >>= fun () ->
+  guard (length buf >= 4) Underflow >>= fun () ->
   let size = BE.get_uint32 buf 0 in
   let intsize = Int32.to_int size in
-  guard (len buf >= 4 + intsize) Underflow >>| fun () ->
+  guard (length buf >= 4 + intsize) Underflow >>| fun () ->
   (sub buf 4 intsize, shift buf (4 + intsize))
 
 let parse_gy data =
   decode_data data >>= fun (gy, rst) ->
-  guard (len rst = 0) Underflow >>= fun () ->
+  guard (length rst = 0) Underflow >>= fun () ->
   guard (get_uint8 gy 0 <> 0) LeadingZero >>| fun () ->
   gy
 
@@ -170,7 +170,7 @@ let version_of_int = function
   | _ -> Error (Unknown "version")
 
 let parse_header bytes =
-  guard (len bytes >= 3) Underflow >>= fun () ->
+  guard (length bytes >= 3) Underflow >>= fun () ->
   version_of_int (BE.get_uint16 bytes 0) >>= fun version ->
   let typ = get_uint8 bytes 2 in
   R.of_option
@@ -179,14 +179,14 @@ let parse_header bytes =
   match version with
   | `V2 -> Ok (version, typ, None, shift bytes 3)
   | `V3 ->
-    guard (len bytes >= 11) Underflow >>| fun () ->
+    guard (length bytes >= 11) Underflow >>| fun () ->
     let mine = BE.get_uint32 bytes 3
     and thei = BE.get_uint32 bytes 7
     in
     (version, typ, Some (mine, thei), shift bytes 11)
 
 let parse_signature_data buf =
-  guard (len buf >= 2) Underflow >>= fun () ->
+  guard (length buf >= 2) Underflow >>= fun () ->
   let tag, buf = split buf 2 in
   guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") >>= fun () ->
   decode_data buf >>= fun (p, buf) ->
@@ -199,7 +199,7 @@ let parse_signature_data buf =
   guard (get_uint8 y 0 <> 0) LeadingZero >>= fun () ->
   R.reword_error (function `Msg m -> Unknown m)
     (Otr_crypto.OtrDsa.pub ~p ~q ~gg ~y) >>= fun key ->
-  guard (len buf = 44) (Unknown "signature lengh") >>| fun () ->
+  guard (length buf = 44) (Unknown "signature lengh") >>| fun () ->
   let keyida = BE.get_uint32 buf 0 in
   let buf = shift buf 4 in
   let siga = split buf 20 in
@@ -208,30 +208,30 @@ let parse_signature_data buf =
 let parse_reveal buf =
   decode_data buf >>= fun (r, buf) ->
   decode_data buf >>= fun (enc_data, mac) ->
-  guard (len mac = 20) (Unknown "wrong mac length") >>| fun () ->
+  guard (length mac = 20) (Unknown "wrong mac length") >>| fun () ->
   (r, enc_data, mac)
 
 let parse_dh_commit buf =
   decode_data buf >>= fun (gxenc, buf) ->
   decode_data buf >>= fun (hgx, buf) ->
-  guard ((len buf = 0) && (len hgx = 32)) (Unknown "bad dh_commit") >>| fun () ->
+  guard ((length buf = 0) && (length hgx = 32)) (Unknown "bad dh_commit") >>| fun () ->
   (gxenc, hgx)
 
 let parse_data_body buf =
-  guard (len buf >= 9) Underflow >>= fun () ->
+  guard (length buf >= 9) Underflow >>= fun () ->
   let flags = get_uint8 buf 0
   and s_keyid = BE.get_uint32 buf 1
   and r_keyid = BE.get_uint32 buf 5
   in
   decode_data (shift buf 9) >>= fun (dh_y, buf) ->
   guard (get_uint8 dh_y 0 <> 0) LeadingZero >>= fun () ->
-  guard (len buf >= 8) Underflow >>= fun () ->
+  guard (length buf >= 8) Underflow >>= fun () ->
   let ctr = BE.get_uint64 buf 0 in
   decode_data (shift buf 8) >>= fun (encdata, buf) ->
-  guard (len buf >= 20) Underflow >>= fun () ->
+  guard (length buf >= 20) Underflow >>= fun () ->
   let mac = sub buf 0 20 in
   decode_data (shift buf 20) >>= fun (reveal, buf) ->
-  guard (len buf = 0) Underflow >>| fun () ->
+  guard (length buf = 0) Underflow >>| fun () ->
   let flags = if flags = 1 then true else false in
   (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
 
@@ -242,22 +242,22 @@ let parse_data buf =
   (version, instances, flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
 
 let parse_tlv buf =
-  guard (len buf >= 4) Underflow >>= fun () ->
+  guard (length buf >= 4) Underflow >>= fun () ->
   let typ = BE.get_uint16 buf 0 in
   let l = BE.get_uint16 buf 2 in
-  guard (len buf >= 4 + l) Underflow >>| fun () ->
+  guard (length buf >= 4 + l) Underflow >>| fun () ->
   (int_to_tlv_type typ, sub buf 4 l, shift buf (4 + l))
 
 let parse_datas buf n =
   let rec p_data buf acc = function
-    | 0 when len buf = 0 -> Ok (List.rev acc)
+    | 0 when length buf = 0 -> Ok (List.rev acc)
     | 0 -> Error Underflow
     | n ->
       decode_data buf >>= fun (x, buf) ->
       guard (get_uint8 x 0 <> 0) LeadingZero >>= fun () ->
       p_data buf (x :: acc) (pred n)
   in
-  guard (len buf >= 4) Underflow >>= fun () ->
+  guard (length buf >= 4) Underflow >>= fun () ->
   let cnt = BE.get_uint32 buf 0 in
   if cnt = Int32.of_int n then
     p_data (shift buf 4) [] n

@@ -45,7 +45,7 @@ let encode_int data =
   buf
 
 let encode_data data =
-  encode_int (Int32.of_int (Cstruct.len data)) <+> data
+  encode_int (Int32.of_int (Cstruct.length data)) <+> data
 
 let dh_commit version instances dhshared hashed =
   let header = header version instances Otr_packet.DH_COMMIT in
@@ -89,7 +89,7 @@ let tlv ?data ?predata typ =
       | Some x -> x
     in
     let data = pred <+> data in
-    Cstruct.BE.set_uint16 buf 2 (Cstruct.len data) ;
+    Cstruct.BE.set_uint16 buf 2 (Cstruct.length data) ;
     buf <+> data
   | None ->
     Cstruct.BE.set_uint16 buf 2 0 ;

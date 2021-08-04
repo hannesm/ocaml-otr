@@ -62,7 +62,7 @@ module Engine = struct
     | None -> Ok (state, None, [])
     | Some data ->
       let rec process_data state data out warn =
-        match Cstruct.len data with
+        match Cstruct.length data with
         | 0 -> (state, out, warn)
         | _ -> match Otr_parser.parse_tlv data with
           | Ok (typ, buf, rest) ->
@@ -99,7 +99,7 @@ module Engine = struct
             if ctr' <= keyblock.recv_ctr then
               Ok (dh_keys, symm, None, [`Warning "ignoring message with invalid counter"])
             else
-              let stop = Cstruct.len bytes - Cstruct.len reveal - 4 - 20 in
+              let stop = Cstruct.length bytes - Cstruct.length reveal - 4 - 20 in
               guard (stop >= 0) "invalid data" >>= fun () ->
               let mac' = Otr_crypto.sha1mac ~key:keyblock.recv_mac (Cstruct.sub bytes 0 stop) in
               guard (Cstruct.equal mac mac') "invalid mac" >>| fun () ->
