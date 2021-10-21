@@ -279,3 +279,7 @@ and otr_prefix = "?OTR"
 
 let otr_mark, otr_err_mark, otr_v2_frag, otr_v3_frag =
   (otr_prefix ^ ":", otr_prefix ^ " Error:", otr_prefix ^ ",", otr_prefix ^ "|")
+
+let (let*) = Result.bind
+
+let guard p e = if p then Ok () else Error e

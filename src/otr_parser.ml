@@ -1,8 +1,8 @@
 open Cstruct
-open Rresult
 open Astring
 
 open Otr_packet
+open Otr_state
 
 type error =
   | Unknown of string
@@ -70,28 +70,36 @@ let parse_plain_tag data =
   in
   find_mark data []
 
-let guard p e = if p then Ok () else Error e
-
 let parse_fragment data =
   match String.cuts ~sep:"," data with
   | k :: n :: piece :: rest ->
     let k = int_of_string k in
     let n = int_of_string n in
-    guard
-      (k > 0 && k <= 65535)
-      (Unknown "k must be between 0 and 65535") >>= fun () ->
-    guard
-      (n > 0 && n <= 65535)
-      (Unknown "n must be between 0 and 65535") >>= fun () ->
-    guard
-      (k <= n)
-      (Unknown "k must be smaller or equal to n") >>= fun () ->
-    guard
-      (String.length piece > 0)
-      (Unknown "fragment must be of non-zero size") >>= fun () ->
-    guard
-      (String.length (String.concat ~sep:"" rest) = 0)
-      (Unknown "too many elements") >>= fun () ->
+    let* () =
+      guard
+        (k > 0 && k <= 65535)
+        (Unknown "k must be between 0 and 65535")
+    in
+    let* () =
+      guard
+        (n > 0 && n <= 65535)
+        (Unknown "n must be between 0 and 65535")
+    in
+    let* () =
+      guard
+        (k <= n)
+        (Unknown "k must be smaller or equal to n")
+    in
+    let* () =
+      guard
+        (String.length piece > 0)
+        (Unknown "fragment must be of non-zero size")
+    in
+    let* () =
+      guard
+        (String.length (String.concat ~sep:"" rest) = 0)
+        (Unknown "too many elements")
+    in
     Ok ((k, n), piece)
   | _ -> Error (Unknown "invalid fragment")
 
@@ -102,8 +110,8 @@ let parse_fragment_v3 data =
       | Some (receiver_instance, data) ->
         let sender_instance = Scanf.sscanf sender_instance "%lx" (fun x -> x) in
         let receiver_instance = Scanf.sscanf receiver_instance "%lx" (fun x -> x) in
-        parse_fragment data >>| fun (kn, piece) ->
-        ((sender_instance, receiver_instance), kn, piece)
+        let* kn, piece = parse_fragment data in
+        Ok ((sender_instance, receiver_instance), kn, piece)
       | None -> Error (Unknown "invalid fragment (receiver_instance)"))
   | None -> Error (Unknown "invalid fragment (sender_instance)")
 
@@ -151,17 +159,17 @@ let classify_input bytes =
 
 (* real OTR data parsing *)
 let decode_data buf =
-  guard (length buf >= 4) Underflow >>= fun () ->
+  let* () = guard (length buf >= 4) Underflow in
   let size = BE.get_uint32 buf 0 in
   let intsize = Int32.to_int size in
-  guard (length buf >= 4 + intsize) Underflow >>| fun () ->
-  (sub buf 4 intsize, shift buf (4 + intsize))
+  let* () = guard (length buf >= 4 + intsize) Underflow in
+  Ok (sub buf 4 intsize, shift buf (4 + intsize))
 
 let parse_gy data =
-  decode_data data >>= fun (gy, rst) ->
-  guard (length rst = 0) Underflow >>= fun () ->
-  guard (get_uint8 gy 0 <> 0) LeadingZero >>| fun () ->
-  gy
+  let* gy, rst = decode_data data in
+  let* () = guard (length rst = 0) Underflow in
+  let* () = guard (get_uint8 gy 0 <> 0) LeadingZero in
+  Ok gy
 
 
 let version_of_int = function
@@ -170,94 +178,103 @@ let version_of_int = function
   | _ -> Error (Unknown "version")
 
 let parse_header bytes =
-  guard (length bytes >= 3) Underflow >>= fun () ->
-  version_of_int (BE.get_uint16 bytes 0) >>= fun version ->
+  let* () = guard (length bytes >= 3) Underflow in
+  let* version = version_of_int (BE.get_uint16 bytes 0) in
   let typ = get_uint8 bytes 2 in
-  R.of_option
-    ~none:(fun () -> Error (Unknown "message type"))
-    (int_to_message_type typ) >>= fun typ ->
+  let* typ =
+    Option.to_result
+      ~none:(Unknown "message type")
+      (int_to_message_type typ)
+  in
   match version with
   | `V2 -> Ok (version, typ, None, shift bytes 3)
   | `V3 ->
-    guard (length bytes >= 11) Underflow >>| fun () ->
+    let* () = guard (length bytes >= 11) Underflow in
     let mine = BE.get_uint32 bytes 3
     and thei = BE.get_uint32 bytes 7
     in
-    (version, typ, Some (mine, thei), shift bytes 11)
+    Ok (version, typ, Some (mine, thei), shift bytes 11)
 
 let parse_signature_data buf =
-  guard (length buf >= 2) Underflow >>= fun () ->
+  let* () = guard (length buf >= 2) Underflow in
   let tag, buf = split buf 2 in
-  guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") >>= fun () ->
-  decode_data buf >>= fun (p, buf) ->
-  guard (get_uint8 p 0 <> 0) LeadingZero >>= fun () ->
-  decode_data buf >>= fun (q, buf) ->
-  guard (get_uint8 q 0 <> 0) LeadingZero >>= fun () ->
-  decode_data buf >>= fun (gg, buf) ->
-  guard (get_uint8 gg 0 <> 0) LeadingZero >>= fun () ->
-  decode_data buf >>= fun (y, buf) ->
-  guard (get_uint8 y 0 <> 0) LeadingZero >>= fun () ->
-  R.reword_error (function `Msg m -> Unknown m)
-    (Otr_crypto.OtrDsa.pub ~p ~q ~gg ~y) >>= fun key ->
-  guard (length buf = 44) (Unknown "signature lengh") >>| fun () ->
+  let* () = guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") in
+  let* p, buf = decode_data buf in
+  let* () = guard (get_uint8 p 0 <> 0) LeadingZero in
+  let* q, buf = decode_data buf in
+  let* () = guard (get_uint8 q 0 <> 0) LeadingZero in
+  let* gg, buf = decode_data buf in
+  let* () = guard (get_uint8 gg 0 <> 0) LeadingZero in
+  let* y, buf = decode_data buf in
+  let* () = guard (get_uint8 y 0 <> 0) LeadingZero in
+  let* key =
+    Result.map_error
+      (function `Msg m -> Unknown m)
+      (Otr_crypto.OtrDsa.pub ~p ~q ~gg ~y)
+  in
+  let* () = guard (length buf = 44) (Unknown "signature lengh") in
   let keyida = BE.get_uint32 buf 0 in
   let buf = shift buf 4 in
   let siga = split buf 20 in
-  (key, keyida, siga)
+  Ok (key, keyida, siga)
 
 let parse_reveal buf =
-  decode_data buf >>= fun (r, buf) ->
-  decode_data buf >>= fun (enc_data, mac) ->
-  guard (length mac = 20) (Unknown "wrong mac length") >>| fun () ->
-  (r, enc_data, mac)
+  let* r, buf = decode_data buf in
+  let* enc_data, mac = decode_data buf in
+  let* () = guard (length mac = 20) (Unknown "wrong mac length") in
+  Ok (r, enc_data, mac)
 
 let parse_dh_commit buf =
-  decode_data buf >>= fun (gxenc, buf) ->
-  decode_data buf >>= fun (hgx, buf) ->
-  guard ((length buf = 0) && (length hgx = 32)) (Unknown "bad dh_commit") >>| fun () ->
-  (gxenc, hgx)
+  let* gxenc, buf = decode_data buf in
+  let* hgx, buf = decode_data buf in
+  let* () =
+    guard ((length buf = 0) && (length hgx = 32)) (Unknown "bad dh_commit")
+  in
+  Ok (gxenc, hgx)
 
 let parse_data_body buf =
-  guard (length buf >= 9) Underflow >>= fun () ->
+  let* () = guard (length buf >= 9) Underflow in
   let flags = get_uint8 buf 0
   and s_keyid = BE.get_uint32 buf 1
   and r_keyid = BE.get_uint32 buf 5
   in
-  decode_data (shift buf 9) >>= fun (dh_y, buf) ->
-  guard (get_uint8 dh_y 0 <> 0) LeadingZero >>= fun () ->
-  guard (length buf >= 8) Underflow >>= fun () ->
+  let* dh_y, buf = decode_data (shift buf 9) in
+  let* () = guard (get_uint8 dh_y 0 <> 0) LeadingZero in
+  let* () = guard (length buf >= 8) Underflow in
   let ctr = BE.get_uint64 buf 0 in
-  decode_data (shift buf 8) >>= fun (encdata, buf) ->
-  guard (length buf >= 20) Underflow >>= fun () ->
+  let* encdata, buf = decode_data (shift buf 8) in
+  let* () = guard (length buf >= 20) Underflow in
   let mac = sub buf 0 20 in
-  decode_data (shift buf 20) >>= fun (reveal, buf) ->
-  guard (length buf = 0) Underflow >>| fun () ->
+  let* reveal, buf = decode_data (shift buf 20) in
+  let* () = guard (length buf = 0) Underflow in
   let flags = if flags = 1 then true else false in
-  (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
+  Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
 
 let parse_data buf =
-  parse_header buf >>= fun (version, typ, instances, buf) ->
-  guard (typ = DATA) (Unknown "type") >>= fun () ->
-  parse_data_body buf >>| fun (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal) ->
-  (version, instances, flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
+  let* version, typ, instances, buf = parse_header buf in
+  let* () = guard (typ = DATA) (Unknown "type") in
+  let* flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal =
+    parse_data_body buf
+  in
+  Ok (version, instances, flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
 
 let parse_tlv buf =
-  guard (length buf >= 4) Underflow >>= fun () ->
+  let* () = guard (length buf >= 4) Underflow in
   let typ = BE.get_uint16 buf 0 in
   let l = BE.get_uint16 buf 2 in
-  guard (length buf >= 4 + l) Underflow >>| fun () ->
-  (int_to_tlv_type typ, sub buf 4 l, shift buf (4 + l))
+  let* () = guard (length buf >= 4 + l) Underflow in
+  Ok (int_to_tlv_type typ, sub buf 4 l, shift buf (4 + l))
 
 let parse_datas buf n =
   let rec p_data buf acc = function
     | 0 when length buf = 0 -> Ok (List.rev acc)
     | 0 -> Error Underflow
     | n ->
-      decode_data buf >>= fun (x, buf) ->
-      guard (get_uint8 x 0 <> 0) LeadingZero >>= fun () ->
+      let* x, buf = decode_data buf in
+      let* () = guard (get_uint8 x 0 <> 0) LeadingZero in
       p_data buf (x :: acc) (pred n)
   in
-  guard (length buf >= 4) Underflow >>= fun () ->
+  let* () = guard (length buf >= 4) Underflow in
   let cnt = BE.get_uint32 buf 0 in
   if cnt = Int32.of_int n then
     p_data (shift buf 4) [] n

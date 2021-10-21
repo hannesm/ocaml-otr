@@ -133,7 +133,9 @@ let start_session _ =
     | _ -> assert false ) *)
 
 let _ =
-  Mirage_crypto_rng_unix.initialize ();
-  for _i = 0 to 10 do
+  let seed = Cstruct.create 10 in
+  let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
+  Mirage_crypto_rng.set_default_generator g;
+  for _i = 0 to 1 do
     start_session ()
   done

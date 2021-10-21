@@ -137,3 +137,7 @@ val otr_mark : string
 val otr_err_mark : string
 val otr_v2_frag : string
 val otr_v3_frag : string
+
+val (let*) : ('a, 'e) result -> ('a -> ('b, 'e) result) -> ('b, 'e) result
+
+val guard : bool -> 'e -> (unit, 'e) result

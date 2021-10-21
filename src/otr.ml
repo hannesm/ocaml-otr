@@ -2,7 +2,6 @@ module State = Otr_state
 
 module Engine = struct
   open Otr_state
-  open Rresult
 
   let policy ctx p = List.mem p ctx.config.policies
 
@@ -22,11 +21,13 @@ module Engine = struct
 
   let handle_whitespace_tag ctx their_versions =
     let warn = handle_cleartext ctx in
-    (if policy ctx `WHITESPACE_START_AKE then
-       commit ctx their_versions
-     else
-       Ok (ctx, None) ) >>| fun (ctx, out) ->
-    (ctx, out, warn)
+    let* ctx, out =
+      if policy ctx `WHITESPACE_START_AKE then
+        commit ctx their_versions
+      else
+        Ok (ctx, None)
+    in
+    Ok (ctx, out, warn)
 
   let handle_error ctx =
     if policy ctx `ERROR_START_AKE then
@@ -77,8 +78,6 @@ module Engine = struct
       in
       Ok (state, out, warn)
 
-  let guard p e = if p then Ok () else Error e
-
   let decrypt dh_keys symm version instances bytes =
     match Otr_parser.parse_data bytes with
     | Ok (version', instances', _flags, s_keyid, r_keyid, dh_y, ctr', encdata, mac, reveal) ->
@@ -100,9 +99,9 @@ module Engine = struct
               Ok (dh_keys, symm, None, [`Warning "ignoring message with invalid counter"])
             else
               let stop = Cstruct.length bytes - Cstruct.length reveal - 4 - 20 in
-              guard (stop >= 0) "invalid data" >>= fun () ->
+              let* () = guard (stop >= 0) "invalid data" in
               let mac' = Otr_crypto.sha1mac ~key:keyblock.recv_mac (Cstruct.sub bytes 0 stop) in
-              guard (Cstruct.equal mac mac') "invalid mac" >>| fun () ->
+              let* () = guard (Cstruct.equal mac mac') "invalid mac" in
               let dec = Cstruct.to_string (Otr_crypto.crypt ~key:keyblock.recv_aes ~ctr:ctr' encdata) in
               let txt, data =
                 let len = String.length dec in
@@ -122,7 +121,7 @@ module Engine = struct
               let dh_keys = Otr_ratchet.rotate_keys dh_keys s_keyid r_keyid dh_y
               and symm = Otr_ratchet.set_recv_counter ctr' s_keyid r_keyid symm
               in
-              (dh_keys, symm, data, ret)
+              Ok (dh_keys, symm, data, ret)
         end
     | Error Otr_parser.Underflow -> Error "Malformed OTR data message: parser reported underflow"
     | Error Otr_parser.LeadingZero -> Error "Malformed OTR data message: parser reported leading zero"
@@ -174,9 +173,9 @@ module Engine = struct
           Ok (ctx, None, [`Warning "wrong instances in message"])
       end
     | MSGSTATE_ENCRYPTED enc_data ->
-      decrypt enc_data.dh_keys enc_data.symms ctx.version ctx.instances bytes >>= fun (dh_keys, symms, data, ret) ->
+      let* dh_keys, symms, data, ret = decrypt enc_data.dh_keys enc_data.symms ctx.version ctx.instances bytes in
       let state = { ctx.state with message_state = MSGSTATE_ENCRYPTED { enc_data with dh_keys ; symms } } in
-      handle_tlvs state data >>= fun (state, out, warn) ->
+      let* state, out, warn = handle_tlvs state data in
       let state, out = match out with
         | None -> (state, None)
         | Some x ->

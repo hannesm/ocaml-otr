@@ -1,5 +1,3 @@
-open Rresult
-
 open Otr_state
 
 type error =
@@ -14,9 +12,11 @@ let fp = Otr_crypto.OtrDsa.fingerprint
 let my_fp dsa = fp (Mirage_crypto_pk.Dsa.pub_of_priv dsa)
 
 let start_smp dsa enc_data smp_state ?question secret =
-  ( match smp_state with
+  let* () =
+    match smp_state with
     | SMPSTATE_EXPECT1 -> Ok ()
-    | _ -> Error UnexpectedMessage ) >>| fun () ->
+    | _ -> Error UnexpectedMessage
+  in
   let a2, g2a = Otr_crypto.gen_dh_secret ()
   and a3, g3a = Otr_crypto.gen_dh_secret ()
   in
@@ -31,7 +31,7 @@ let start_smp dsa enc_data smp_state ?question secret =
     | None -> Otr_builder.tlv ~data Otr_packet.SMP_MESSAGE_1
     | Some x -> Otr_builder.tlv ~data ~predata:(Cstruct.of_string (x ^ "\000")) Otr_packet.SMP_MESSAGE_1Q
   in
-  (smp_state, Some out)
+  Ok (smp_state, Some out)
 
 let abort_smp smp_state =
   match smp_state with
@@ -180,27 +180,28 @@ let handle_smp smp_state typ data =
   let open Otr_packet in
   match smp_state, typ with
   | SMPSTATE_EXPECT1, SMP_MESSAGE_1 ->
-    handle_smp_1 data >>| fun (s, o, r) ->
-    (s, o, r)
+    handle_smp_1 data
   | SMPSTATE_EXPECT1, SMP_MESSAGE_1Q ->
     let str = Cstruct.to_string data in
-    ( try
+    let* question, data =
+      try
         let stop = String.index str '\000' in
         let stop' = succ stop in
         Ok (String.sub str 0 stop, Cstruct.shift data stop')
       with
-        Not_found -> Error UnexpectedMessage ) >>= fun (question, data) ->
-    handle_smp_1 data >>| fun (s, o, r) ->
-    (s, o, [ `SMP_received_question question ] @ r)
+        Not_found -> Error UnexpectedMessage
+    in
+    let* s, o, r = handle_smp_1 data in
+    Ok (s, o, [ `SMP_received_question question ] @ r)
   | SMPSTATE_EXPECT2 (x, a2, a3), SMP_MESSAGE_2 ->
-    handle_smp_2 x a2 a3 data >>| fun (s, o) ->
-    (s, Some o, [])
+    let* s, o = handle_smp_2 x a2 a3 data in
+    Ok (s, Some o, [])
   | SMPSTATE_EXPECT3 (g3a, g2, g3, b3, pb, qb), SMP_MESSAGE_3 ->
-    handle_smp_3 g3a g2 g3 b3 pb qb data >>| fun (s, o, r) ->
-    (s, Some o, [r])
+    let* s, o, r = handle_smp_3 g3a g2 g3 b3 pb qb data in
+    Ok (s, Some o, [r])
   | SMPSTATE_EXPECT4 (g3b, pab, qab, ra), SMP_MESSAGE_4 ->
-    handle_smp_4 g3b pab qab ra data >>| fun (s, r) ->
-    (s, None, [r])
+    let* s, r = handle_smp_4 g3b pab qab ra data in
+    Ok (s, None, [r])
   | _, SMP_ABORT ->
     Ok (SMPSTATE_EXPECT1, None, [])
   | _, _ ->
