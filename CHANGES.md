@@ -1,3 +1,10 @@
+## v0.3.10 (2021-10-25)
+
+* remove rresult dependency
+* use sexplib0 instead of sexplib for mirage-crypto 0.10.4+ compatibility
+  (the dependency stated sexplib0 since some time, but sexplib was inherited
+   via mirage-crypto-pk)
+
 ## v0.3.9 (2021-08-04)
 
 * use Cstruct.length instead of deprecated Cstruct.len (requires cstruct 6.0.0)
