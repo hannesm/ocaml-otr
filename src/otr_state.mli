@@ -66,8 +66,8 @@ type policy = [
   | `REVEAL_MACS
 ]
 
-val sexp_of_policy : policy -> Sexplib.Sexp.t
-val policy_of_sexp : Sexplib.Sexp.t -> policy
+val sexp_of_policy : policy -> Sexplib0.Sexp.t
+val policy_of_sexp : Sexplib0.Sexp.t -> policy
 
 val policy_to_string : policy -> string
 
@@ -77,8 +77,8 @@ val all_policies : policy list
 
 type version = [ `V2 | `V3 ]
 
-val sexp_of_version : version -> Sexplib.Sexp.t
-val version_of_sexp : Sexplib.Sexp.t -> version
+val sexp_of_version : version -> Sexplib0.Sexp.t
+val version_of_sexp : Sexplib0.Sexp.t -> version
 
 val version_to_string : version -> string
 
@@ -91,8 +91,8 @@ type config = {
   versions : version list ;
 }
 
-val sexp_of_config : config -> Sexplib.Sexp.t
-val config_of_sexp : Sexplib.Sexp.t -> config
+val sexp_of_config : config -> Sexplib0.Sexp.t
+val config_of_sexp : Sexplib0.Sexp.t -> config
 
 val config : version list -> policy list -> config
 
