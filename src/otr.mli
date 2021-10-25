@@ -54,8 +54,8 @@ module State : sig
     | `REVEAL_MACS
   ]
 
-  val sexp_of_policy : policy -> Sexplib.Sexp.t
-  val policy_of_sexp : Sexplib.Sexp.t -> policy
+  val sexp_of_policy : policy -> Sexplib0.Sexp.t
+  val policy_of_sexp : Sexplib0.Sexp.t -> policy
 
   (** [policy_to_string policy] is [string], the string representation
       of the given [policy]. *)
@@ -71,8 +71,8 @@ module State : sig
   (** OTR protocol versions supported by this library *)
   type version = [ `V2 | `V3 ]
 
-  val sexp_of_version : version -> Sexplib.Sexp.t
-  val version_of_sexp : Sexplib.Sexp.t -> version
+  val sexp_of_version : version -> Sexplib0.Sexp.t
+  val version_of_sexp : Sexplib0.Sexp.t -> version
 
   (** [version_to_string version] is [string], the string
      representation of the [version]. *)
@@ -91,8 +91,8 @@ module State : sig
     versions : version list ;
   }
 
-  val sexp_of_config : config -> Sexplib.Sexp.t
-  val config_of_sexp : Sexplib.Sexp.t -> config
+  val sexp_of_config : config -> Sexplib0.Sexp.t
+  val config_of_sexp : Sexplib0.Sexp.t -> config
 
   (** [config versions policies] is [config], the configuration with
       the given [versions] and [policies]. *)

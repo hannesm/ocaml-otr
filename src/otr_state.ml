@@ -99,12 +99,11 @@ let string_to_policy = function
   | "REVEAL_MACS"          -> Some `REVEAL_MACS
   | _ -> None
 
-let policy_of_sexp = function
-  | Sexplib.Sexp.Atom atom ->
-    (match string_to_policy atom with
-     | None -> invalid_arg "bad sexp"
-     | Some v -> v)
-  | _ -> invalid_arg "bad sexp"
+let policy_of_sexp s =
+  let atom = Sexplib0.Sexp_conv.string_of_sexp s in
+  match string_to_policy atom with
+  | None -> invalid_arg "bad sexp"
+  | Some v -> v
 
 let sexp_of_policy p =
   let str = match p with
@@ -114,7 +113,7 @@ let sexp_of_policy p =
     | `ERROR_START_AKE      -> "ERROR_START_AKE"
     | `REVEAL_MACS          -> "REVEAL_MACS"
   in
-  Sexplib.Sexp.Atom str
+  Sexplib0.Sexp_conv.sexp_of_string str
 
 let all_policies = [ `REQUIRE_ENCRYPTION ; `SEND_WHITESPACE_TAG ; `WHITESPACE_START_AKE ; `ERROR_START_AKE ; `REVEAL_MACS ]
 
@@ -129,19 +128,18 @@ let string_to_version = function
   | "V3" -> Some `V3
   | _ -> None
 
-let version_of_sexp = function
-  | Sexplib.Sexp.Atom v ->
-    (match string_to_version v with
-     | None -> invalid_arg "bad version"
-     | Some x -> x)
-  | _ -> invalid_arg "bad sexp"
+let version_of_sexp s =
+  let v = Sexplib0.Sexp_conv.string_of_sexp s in
+  match string_to_version v with
+  | None -> invalid_arg "bad version"
+  | Some x -> x
 
 let sexp_of_version v =
   let str = match v with
     | `V2 -> "V2"
     | `V3 -> "V3"
   in
-  Sexplib.Sexp.Atom str
+  Sexplib0.Sexp_conv.sexp_of_string str
 
 let all_versions = [ `V2 ; `V3 ]
 
@@ -151,23 +149,23 @@ type config = {
 }
 
 let config_of_sexp = function
-  | Sexplib.Sexp.List fields_sexp ->
+  | Sexplib0.Sexp.List fields_sexp ->
     let policies_field = ref None
     and versions_field = ref None
     in
     let rec iter = function
-      | (Sexplib.Sexp.List ((Sexplib.Sexp.Atom field_name)::field::[]))::tail ->
+      | Sexplib0.Sexp.(List ((Atom field_name)::field::[]))::tail ->
         ((match field_name with
             | "policies" ->
               (match !policies_field with
                | None ->
-                 let fvalue = Sexplib.Conv.list_of_sexp policy_of_sexp field in
+                 let fvalue = Sexplib0.Sexp_conv.list_of_sexp policy_of_sexp field in
                  policies_field := Some fvalue
                | Some _ -> invalid_arg "duplicate field")
             | "versions" ->
               (match !versions_field with
                | None ->
-                 let fvalue = Sexplib.Conv.list_of_sexp version_of_sexp field in
+                 let fvalue = Sexplib0.Sexp_conv.list_of_sexp version_of_sexp field in
                  versions_field := Some fvalue
                | Some _ -> invalid_arg "duplicate field")
             | _ -> invalid_arg "extra field") ;
@@ -185,12 +183,12 @@ let config_of_sexp = function
 let sexp_of_config { policies = v_policies; versions = v_versions } =
   let bnds = [] in
   let bnds =
-    let arg = Sexplib.Conv.sexp_of_list sexp_of_version v_versions in
-    (Sexplib.Sexp.List [Sexplib.Sexp.Atom "versions"; arg]) :: bnds in
+    let arg = Sexplib0.Sexp_conv.sexp_of_list sexp_of_version v_versions in
+    Sexplib0.Sexp.(List [Atom "versions"; arg]) :: bnds in
   let bnds =
-    let arg = Sexplib.Conv.sexp_of_list sexp_of_policy v_policies in
-    (Sexplib.Sexp.List [Sexplib.Sexp.Atom "policies"; arg]) :: bnds in
-  Sexplib.Sexp.List bnds
+    let arg = Sexplib0.Sexp_conv.sexp_of_list sexp_of_policy v_policies in
+    Sexplib0.Sexp.(List [Atom "policies"; arg]) :: bnds in
+  Sexplib0.Sexp.List bnds
 
 type state = {
   message_state : message_state ;
