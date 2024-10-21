@@ -63,7 +63,7 @@ module Engine = struct
     | None -> Ok (state, None, [])
     | Some data ->
       let rec process_data state data out warn =
-        match Cstruct.length data with
+        match String.length data with
         | 0 -> (state, out, warn)
         | _ -> match Otr_parser.parse_tlv data with
           | Ok (typ, buf, rest) ->
@@ -71,10 +71,10 @@ module Engine = struct
             process_data state rest (out' :: out) (warn @ warn')
           | Error _ -> (state, out, [`Warning "ignoring malformed TLV"])
       in
-      let state, out, warn = process_data state (Cstruct.of_string data) [] [] in
+      let state, out, warn = process_data state data [] [] in
       let out = match filter_map out with
         | [] -> None
-        | xs -> Some (Cstruct.to_string (Cstruct.concat xs))
+        | xs -> Some (String.concat "" xs)
       in
       Ok (state, out, warn)
 
@@ -98,11 +98,11 @@ module Engine = struct
             if ctr' <= keyblock.recv_ctr then
               Ok (dh_keys, symm, None, [`Warning "ignoring message with invalid counter"])
             else
-              let stop = Cstruct.length bytes - Cstruct.length reveal - 4 - 20 in
+              let stop = String.length bytes - String.length reveal - 4 - 20 in
               let* () = guard (stop >= 0) "invalid data" in
-              let mac' = Otr_crypto.sha1mac ~key:keyblock.recv_mac (Cstruct.sub bytes 0 stop) in
-              let* () = guard (Cstruct.equal mac mac') "invalid mac" in
-              let dec = Cstruct.to_string (Otr_crypto.crypt ~key:keyblock.recv_aes ~ctr:ctr' encdata) in
+              let mac' = Otr_crypto.sha1mac ~key:keyblock.recv_mac (String.sub bytes 0 stop) in
+              let* () = guard (String.equal mac mac') "invalid mac" in
+              let dec = Otr_crypto.crypt ~key:keyblock.recv_aes ~ctr:ctr' encdata in
               let txt, data =
                 let len = String.length dec in
                 let stop =
@@ -132,25 +132,25 @@ module Engine = struct
     let our_id = Int32.pred dh_keys.our_keyid in
     let symm, keyblock = Otr_ratchet.keys dh_keys symm dh_keys.their_keyid our_id in
     let our_ctr = Int64.succ keyblock.send_ctr in
-    let enc = Otr_crypto.crypt ~key:keyblock.send_aes ~ctr:our_ctr (Cstruct.of_string data) in
+    let enc = Otr_crypto.crypt ~key:keyblock.send_aes ~ctr:our_ctr data in
     let data = Otr_builder.data version instances flags our_id dh_keys.their_keyid (snd dh_keys.dh) our_ctr enc in
     let mac = Otr_crypto.sha1mac ~key:keyblock.send_mac data in
     let reveal =
       let macs = if reveal_macs then
-          Cstruct.concat (List.map (fun x -> x.recv_mac) reveal)
+          String.concat "" (List.map (fun x -> x.recv_mac) reveal)
         else
-          Cstruct.create 0
+          ""
       in
       Otr_builder.encode_data macs
     in
-    let out = Cstruct.concat [ data ; mac ; reveal] in
+    let out = String.concat "" [ data ; mac ; reveal] in
     let symm = Otr_ratchet.inc_send_counter dh_keys.their_keyid our_id symm in
     (symm, out)
 
   let wrap_b64string = function
     | None -> None
     | Some m ->
-      let encoded = Base64.encode_string (Cstruct.to_string m) in
+      let encoded = Base64.encode_string m in
       Some (otr_mark ^ encoded ^ ".")
 
   let handle_data ctx bytes =
@@ -217,7 +217,7 @@ module Engine = struct
     match ctx.state.message_state with
     | MSGSTATE_PLAINTEXT -> (ctx, None)
     | MSGSTATE_ENCRYPTED enc_data ->
-      let data = Cstruct.to_string (Otr_builder.tlv Otr_packet.DISCONNECTED) in
+      let data = Otr_builder.tlv Otr_packet.DISCONNECTED in
       let _, out = encrypt enc_data.dh_keys enc_data.symms (reveal_macs ctx) ctx.version ctx.instances true ("\000" ^ data) in
       (reset_session ctx, wrap_b64string (Some out))
     | MSGSTATE_FINISHED ->
@@ -303,7 +303,7 @@ module Engine = struct
 
   let handle_smp ctx call =
     let enc enc_data out smp_state =
-      let data = "\000" ^ (Cstruct.to_string out) in
+      let data = "\000" ^ out in
       let symms, out = encrypt enc_data.dh_keys enc_data.symms (reveal_macs ctx) ctx.version ctx.instances false data in
       let message_state = MSGSTATE_ENCRYPTED { enc_data with symms } in
       let state = { ctx.state with message_state ; smp_state } in
@@ -338,8 +338,7 @@ module Utils = struct
   open State
 
   let fingerprint x =
-    let fp = Otr_crypto.OtrDsa.fingerprint x in
-    Cstruct.to_string fp
+    Otr_crypto.OtrDsa.fingerprint x
 
   let their_fingerprint ctx =
     match ctx.state.message_state with

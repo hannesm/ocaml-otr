@@ -133,7 +133,7 @@ let start_session _ =
     | _ -> assert false ) *)
 
 let _ =
-  let seed = Cstruct.create 10 in
+  let seed = Bytes.unsafe_to_string (Bytes.make 10 '\000') in
   let g = Mirage_crypto_rng.(create ~seed (module Fortuna)) in
   Mirage_crypto_rng.set_default_generator g;
   for _i = 0 to 1 do
