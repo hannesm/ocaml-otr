@@ -1,3 +1,7 @@
+## v1.0.0 (2024-10-21)
+
+* Use string instead of cstruct (#16 @hannesm)
+
 ## v0.3.10 (2021-10-25)
 
 * remove rresult dependency
