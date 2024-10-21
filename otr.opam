@@ -12,6 +12,7 @@ depends: [
   "mirage-crypto" {>= "1.0.0"}
   "mirage-crypto-pk" {>= "1.0.0"}
   "mirage-crypto-rng" {>= "1.0.0"}
+  "digestif" {>= "1.2.0"}
   "astring"
   "base64" {>= "3.1.0"}
 ]
