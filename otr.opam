@@ -6,12 +6,13 @@ homepage: "https://github.com/hannesm/ocaml-otr"
 doc: "https://hannesm.github.io/ocaml-otr/doc"
 bug-reports: "https://github.com/hannesm/ocaml-otr/issues"
 depends: [
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.13.0"}
   "dune"
-  "cstruct" {>= "6.0.0"}
   "sexplib0"
-  "mirage-crypto"
-  "mirage-crypto-pk"
+  "mirage-crypto" {>= "1.0.0"}
+  "mirage-crypto-pk" {>= "1.0.0"}
+  "mirage-crypto-rng" {>= "1.0.0"}
+  "digestif" {>= "1.2.0"}
   "astring"
   "base64" {>= "3.1.0"}
 ]

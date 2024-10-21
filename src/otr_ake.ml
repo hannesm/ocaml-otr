@@ -9,7 +9,7 @@ type error =
 
 let instance_tag () =
   (* 32 bit random, >= 0x00000100 *)
-  let tag = Cstruct.BE.get_uint32 (Mirage_crypto_rng.generate 4) 0 in
+  let tag = String.get_int32_be (Mirage_crypto_rng.generate 4) 0 in
   Int32.(logor tag 0x100l)
 
 let select_version ours theirs =
@@ -30,7 +30,6 @@ let safe_parse f x =
   | Error (Otr_parser.Unknown x) -> Error (Unknown ("error while parsing: " ^ x))
 
 let mac_sign_encrypt hmac ckey priv gx gy keyid =
-  let (<+>) = Mirage_crypto.Uncommon.Cs.(<+>) in
   let pub =
     let pub = Mirage_crypto_pk.Dsa.pub_of_priv priv in
     Otr_crypto.OtrDsa.to_wire pub
@@ -42,7 +41,7 @@ let mac_sign_encrypt hmac ckey priv gx gy keyid =
     let mb = Otr_crypto.mac ~key:hmac [ gxmpi ; gympi ; pub ; Otr_builder.encode_int keyid ] in
     Otr_crypto.OtrDsa.signature ~key:priv mb
   in
-  let xb = pub <+> Otr_builder.encode_int keyid <+> sigb in
+  let xb = pub ^ Otr_builder.encode_int keyid ^ sigb in
   Otr_crypto.crypt ~key:ckey ~ctr:0L xb
 
 let mac_verify hmac signature pub gx gy keyid =
@@ -94,13 +93,13 @@ let check_key_reveal_sig ctx (dh_secret, gx) r gy =
 
 let keys previous_dh gy their_keyid =
   let dh = Otr_crypto.gen_dh_secret ()
-  and previous_gy = Cstruct.create 0
+  and previous_gy = ""
   in
   { dh ; previous_dh ; our_keyid = 2l ;
     gy ; previous_gy ; their_keyid }
 
 let format_ssid ssid high =
-  let f, s = Cstruct.BE.(get_uint32 ssid 0, get_uint32 ssid 4) in
+  let f, s = String.(get_int32_be ssid 0, get_int32_be ssid 4) in
   Printf.sprintf "%s%08lx%s %s%08lx%s"
     (if high then "[" else "") f (if high then "]" else "")
     (if high then "" else "[") s (if high then "" else "]")
@@ -110,7 +109,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   let* gxenc, hgx = safe_parse Otr_parser.parse_dh_commit dh_commit in
   let gx = Otr_crypto.crypt ~key:r ~ctr:0L gxenc in
   let hgx' = Otr_crypto.hash gx in
-  let* () = guard (Cstruct.equal hgx hgx') (Unknown "hgx does not match hgx'") in
+  let* () = guard (String.equal hgx hgx') (Unknown "hgx does not match hgx'") in
   let* gx = safe_parse Otr_parser.parse_gy gx in
   let* shared_secret =
     Option.to_result
@@ -119,7 +118,7 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
   in
   let ssid, c, c', m1, m2, m1', m2' = Otr_crypto.derive_keys shared_secret in
   let mac' = Otr_crypto.mac160 ~key:m2 enc_data in
-  let* () = guard (Cstruct.equal mac mac') (Unknown "mac does not match mac'") in
+  let* () = guard (String.equal mac mac') (Unknown "mac does not match mac'") in
   let xb = Otr_crypto.crypt ~key:c ~ctr:0L enc_data in
   (* split into pubb, keyidb, sigb *)
   let* pubb, keyidb, sigb = safe_parse Otr_parser.parse_signature_data xb in
@@ -143,9 +142,9 @@ let check_reveal_send_sig ctx (dh_secret, gy) dh_commit buf =
 let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   (* decrypt signature, verify it and macs *)
   let* enc_data, mac = safe_parse Otr_parser.decode_data signature in
-  let* () = guard (Cstruct.length mac = 20) (Unknown "mac has wrong length") in
+  let* () = guard (String.length mac = 20) (Unknown "mac has wrong length") in
   let mymac = Otr_crypto.mac160 ~key:m2' enc_data in
-  let* () = guard (Cstruct.equal mac mymac) (Unknown "mac do not match") in
+  let* () = guard (String.equal mac mymac) (Unknown "mac do not match") in
   let dec = Otr_crypto.crypt ~key:c' ~ctr:0L enc_data in
   (* split into puba keyida siga(Ma) *)
   let* puba, keyida, siga = safe_parse Otr_parser.parse_signature_data dec in
@@ -161,8 +160,8 @@ let check_sig ctx (ssid, c', m1', m2') (dh_secret, gx) gy signature =
   Ok ({ ctx with state }, format_ssid ssid high)
 
 let handle_commit_await_key ctx dh_c h version instances buf =
-  let* () = guard (Cstruct.length buf >= 32) (Unknown "underflow") in
-  let their_hash = Cstruct.sub buf (Cstruct.length buf - 32) 32 in
+  let* () = guard (String.length buf >= 32) (Unknown "underflow") in
+  let their_hash = String.sub buf (String.length buf - 32) 32 in
   if Otr_crypto.mpi_gt h their_hash then
     Ok (ctx, Some dh_c)
   else
@@ -231,7 +230,7 @@ let handle_auth ctx bytes =
     | DH_KEY, AUTHSTATE_AWAITING_SIG (reveal_sig, _, _, gy) ->
       (* same dh_key? -> retransmit REVEAL_SIG *)
       let* gy' = safe_parse Otr_parser.parse_gy buf in
-      if Cstruct.equal gy gy' then
+      if String.equal gy gy' then
         Ok (ctx, Some reveal_sig, [])
       else
         Ok (ctx, None, [])

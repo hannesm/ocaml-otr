@@ -6,7 +6,7 @@ type error =
   | InstanceMismatch
 
 val dh_commit : Otr_state.session -> Otr_state.version list ->
-  (Otr_state.session * Cstruct.t, error) result
+  (Otr_state.session * string, error) result
 
-val handle_auth : Otr_state.session -> Cstruct.t ->
-  (Otr_state.session * Cstruct.t option * Otr_state.ret list, error) result
+val handle_auth : Otr_state.session -> string ->
+  (Otr_state.session * string option * Otr_state.ret list, error) result

@@ -10,23 +10,23 @@ type ret = [
   | `SMP_failure
 ]
 
-type dh_params = (Mirage_crypto_pk.Dh.secret * Cstruct.t)
+type dh_params = (Mirage_crypto_pk.Dh.secret * string)
 
 type dh_keys = {
   dh          : dh_params ;
   previous_dh : dh_params ;
   our_keyid   : int32 ;
-  gy          : Cstruct.t ;
-  previous_gy : Cstruct.t ;
+  gy          : string ;
+  previous_gy : string ;
   their_keyid : int32 ;
 }
 
 type symmetric_keys = {
-  send_aes : Cstruct.t ;
-  send_mac : Cstruct.t ;
+  send_aes : string ;
+  send_mac : string ;
   send_ctr : int64 ;
-  recv_aes : Cstruct.t ;
-  recv_mac : Cstruct.t ;
+  recv_aes : string ;
+  recv_mac : string ;
   recv_ctr : int64 ;
 }
 
@@ -36,7 +36,7 @@ type enc_data = {
   dh_keys   : dh_keys ;
   symms     : symms ;
   their_dsa : Mirage_crypto_pk.Dsa.pub ;
-  ssid      : Cstruct.t ;
+  ssid      : string ;
   high      : bool ;
 }
 
@@ -47,16 +47,16 @@ type message_state =
 
 type auth_state =
   | AUTHSTATE_NONE
-  | AUTHSTATE_AWAITING_DHKEY of Cstruct.t * Cstruct.t * dh_params * Cstruct.t
-  | AUTHSTATE_AWAITING_REVEALSIG of dh_params * Cstruct.t
-  | AUTHSTATE_AWAITING_SIG of Cstruct.t * (Cstruct.t * Cstruct.t * Cstruct.t * Cstruct.t) * dh_params * Cstruct.t
+  | AUTHSTATE_AWAITING_DHKEY of string * string * dh_params * string
+  | AUTHSTATE_AWAITING_REVEALSIG of dh_params * string
+  | AUTHSTATE_AWAITING_SIG of string * (string * string * string * string) * dh_params * string
 
 type smp_state =
-  | SMPSTATE_WAIT_FOR_Y of Cstruct.t * Cstruct.t
+  | SMPSTATE_WAIT_FOR_Y of string * string
   | SMPSTATE_EXPECT1
-  | SMPSTATE_EXPECT2 of Cstruct.t * Mirage_crypto_pk.Dh.secret * Mirage_crypto_pk.Dh.secret
-  | SMPSTATE_EXPECT3 of Cstruct.t * Cstruct.t * Cstruct.t * Mirage_crypto_pk.Dh.secret * Cstruct.t * Cstruct.t
-  | SMPSTATE_EXPECT4 of Cstruct.t * Cstruct.t * Cstruct.t * Mirage_crypto_pk.Dh.secret
+  | SMPSTATE_EXPECT2 of string * Mirage_crypto_pk.Dh.secret * Mirage_crypto_pk.Dh.secret
+  | SMPSTATE_EXPECT3 of string * string * string * Mirage_crypto_pk.Dh.secret * string * string
+  | SMPSTATE_EXPECT4 of string * string * string * Mirage_crypto_pk.Dh.secret
 
 type policy = [
   | `REQUIRE_ENCRYPTION

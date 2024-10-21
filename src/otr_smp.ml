@@ -29,7 +29,7 @@ let start_smp dsa enc_data smp_state ?question secret =
   in
   let out = match question with
     | None -> Otr_builder.tlv ~data Otr_packet.SMP_MESSAGE_1
-    | Some x -> Otr_builder.tlv ~data ~predata:(Cstruct.of_string (x ^ "\000")) Otr_packet.SMP_MESSAGE_1Q
+    | Some x -> Otr_builder.tlv ~data ~predata:(x ^ "\000") Otr_packet.SMP_MESSAGE_1Q
   in
   Ok (smp_state, Some out)
 
@@ -144,7 +144,7 @@ let handle_smp_3 g3a g2 g3 b3 pb qb data =
         let out = Otr_builder.tlv ~data:[ rb ; cr ; d7 ] Otr_packet.SMP_MESSAGE_4 in
         let rab = Otr_crypto.pow_s ra b3 in
         let ret =
-          if Cstruct.equal rab pab then
+          if String.equal rab pab then
             `SMP_success
           else
             `SMP_failure
@@ -167,7 +167,7 @@ let handle_smp_4 g3b pab qab a3 data =
     if Otr_crypto.check_eq_logs cr g3b qab d7 rb 8 then
       let rab = Otr_crypto.pow_s rb a3 in
       let ret =
-        if Cstruct.equal rab pab then
+        if String.equal rab pab then
           `SMP_success
         else
           `SMP_failure
@@ -182,12 +182,11 @@ let handle_smp smp_state typ data =
   | SMPSTATE_EXPECT1, SMP_MESSAGE_1 ->
     handle_smp_1 data
   | SMPSTATE_EXPECT1, SMP_MESSAGE_1Q ->
-    let str = Cstruct.to_string data in
     let* question, data =
       try
-        let stop = String.index str '\000' in
+        let stop = String.index data '\000' in
         let stop' = succ stop in
-        Ok (String.sub str 0 stop, Cstruct.shift data stop')
+        Ok (String.sub data 0 stop, String.sub data stop' (String.length data - stop'))
       with
         Not_found -> Error UnexpectedMessage
     in

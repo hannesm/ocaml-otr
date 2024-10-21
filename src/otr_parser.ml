@@ -1,6 +1,3 @@
-open Cstruct
-open Astring
-
 open Otr_packet
 open Otr_state
 
@@ -19,8 +16,8 @@ let parse_query str =
     | _ -> acc
   in
   let parse idx =
-    let _, left = String.span ~max:idx str in
-    match String.cut ~sep:"?" left with
+    let _, left = Astring.String.span ~max:idx str in
+    match Astring.String.cut ~sep:"?" left with
     | None -> ([], None)
     | Some (vs, post) ->
       let versions = String.fold_left parse_v [] vs in
@@ -32,12 +29,12 @@ let parse_query str =
   | _ -> Error (Unknown "no usable version found")
 
 let mark_match sep data =
-  match String.cut ~sep data with
+  match Astring.String.cut ~sep data with
   | Some (pre, post) -> Ok (maybe pre, post)
   | None -> Error (Unknown "parse failed")
 
 type ret = [
-  | `Data of Cstruct.t
+  | `Data of string
   | `ParseError of string
   | `Error of string
   | `PlainTag of Otr_state.version list * string option
@@ -48,11 +45,11 @@ type ret = [
 ]
 
 let parse_data data =
-  match String.cut ~sep:"." data with
+  match Astring.String.cut ~sep:"." data with
   | None -> Error (Unknown "empty OTR message")
   | Some (data, rest) ->
     match Base64.decode data with
-    | Ok x -> Ok (Cstruct.of_string x, maybe rest)
+    | Ok x -> Ok (x, maybe rest)
     | Error (`Msg m) -> Error (Unknown ("bad base64 data: " ^ m))
 
 let parse_plain_tag data =
@@ -60,7 +57,7 @@ let parse_plain_tag data =
     if String.length str < 8 then
       (List.rev acc, maybe str)
     else
-      let tag, rest = String.span ~max:8 str in
+      let tag, rest = Astring.String.span ~max:8 str in
       if tag = Otr_state.tag_v2 then
         find_mark rest (`V2 :: acc)
       else if tag = Otr_state.tag_v3 then
@@ -71,7 +68,7 @@ let parse_plain_tag data =
   find_mark data []
 
 let parse_fragment data =
-  match String.cuts ~sep:"," data with
+  match Astring.String.cuts ~sep:"," data with
   | k :: n :: piece :: rest ->
     let k = int_of_string k in
     let n = int_of_string n in
@@ -97,16 +94,16 @@ let parse_fragment data =
     in
     let* () =
       guard
-        (String.length (String.concat ~sep:"" rest) = 0)
+        (String.length (String.concat "" rest) = 0)
         (Unknown "too many elements")
     in
     Ok ((k, n), piece)
   | _ -> Error (Unknown "invalid fragment")
 
 let parse_fragment_v3 data =
-  match String.cut ~sep:"|" data with
+  match Astring.String.cut ~sep:"|" data with
   | Some (sender_instance, data) ->
-    ( match String.cut ~sep:"," data with
+    ( match Astring.String.cut ~sep:"," data with
       | Some (receiver_instance, data) ->
         let sender_instance = Scanf.sscanf sender_instance "%lx" (fun x -> x) in
         let receiver_instance = Scanf.sscanf receiver_instance "%lx" (fun x -> x) in
@@ -159,16 +156,16 @@ let classify_input bytes =
 
 (* real OTR data parsing *)
 let decode_data buf =
-  let* () = guard (length buf >= 4) Underflow in
-  let size = BE.get_uint32 buf 0 in
+  let* () = guard (String.length buf >= 4) Underflow in
+  let size = Stdlib.String.get_int32_be buf 0 in
   let intsize = Int32.to_int size in
-  let* () = guard (length buf >= 4 + intsize) Underflow in
-  Ok (sub buf 4 intsize, shift buf (4 + intsize))
+  let* () = guard (String.length buf >= 4 + intsize) Underflow in
+  Ok (String.sub buf 4 intsize, String.sub buf (4 + intsize) (String.length buf - (4 + intsize)))
 
 let parse_gy data =
   let* gy, rst = decode_data data in
-  let* () = guard (length rst = 0) Underflow in
-  let* () = guard (get_uint8 gy 0 <> 0) LeadingZero in
+  let* () = guard (String.length rst = 0) Underflow in
+  let* () = guard (String.get_uint8 gy 0 <> 0) LeadingZero in
   Ok gy
 
 
@@ -178,75 +175,77 @@ let version_of_int = function
   | _ -> Error (Unknown "version")
 
 let parse_header bytes =
-  let* () = guard (length bytes >= 3) Underflow in
-  let* version = version_of_int (BE.get_uint16 bytes 0) in
-  let typ = get_uint8 bytes 2 in
+  let* () = guard (String.length bytes >= 3) Underflow in
+  let* version = version_of_int (String.get_uint16_be bytes 0) in
+  let typ = String.get_uint8 bytes 2 in
   let* typ =
     Option.to_result
       ~none:(Unknown "message type")
       (int_to_message_type typ)
   in
   match version with
-  | `V2 -> Ok (version, typ, None, shift bytes 3)
+  | `V2 -> Ok (version, typ, None, String.sub bytes 3 (String.length bytes - 3))
   | `V3 ->
-    let* () = guard (length bytes >= 11) Underflow in
-    let mine = BE.get_uint32 bytes 3
-    and thei = BE.get_uint32 bytes 7
+    let* () = guard (String.length bytes >= 11) Underflow in
+    let mine = String.get_int32_be bytes 3
+    and thei = String.get_int32_be bytes 7
     in
-    Ok (version, typ, Some (mine, thei), shift bytes 11)
+    Ok (version, typ, Some (mine, thei), String.sub bytes 11 (String.length bytes - 11))
 
 let parse_signature_data buf =
-  let* () = guard (length buf >= 2) Underflow in
-  let tag, buf = split buf 2 in
-  let* () = guard (BE.get_uint16 tag 0 = 0) (Unknown "key tag != 0") in
+  let* () = guard (String.length buf >= 2) Underflow in
+  let tag, buf = String.sub buf 0 2, String.sub buf 2 (String.length buf - 2) in
+  let* () = guard (String.get_uint16_be tag 0 = 0) (Unknown "key tag != 0") in
   let* p, buf = decode_data buf in
-  let* () = guard (get_uint8 p 0 <> 0) LeadingZero in
+  let* () = guard (String.get_uint8 p 0 <> 0) LeadingZero in
   let* q, buf = decode_data buf in
-  let* () = guard (get_uint8 q 0 <> 0) LeadingZero in
+  let* () = guard (String.get_uint8 q 0 <> 0) LeadingZero in
   let* gg, buf = decode_data buf in
-  let* () = guard (get_uint8 gg 0 <> 0) LeadingZero in
+  let* () = guard (String.get_uint8 gg 0 <> 0) LeadingZero in
   let* y, buf = decode_data buf in
-  let* () = guard (get_uint8 y 0 <> 0) LeadingZero in
+  let* () = guard (String.get_uint8 y 0 <> 0) LeadingZero in
   let* key =
     Result.map_error
       (function `Msg m -> Unknown m)
       (Otr_crypto.OtrDsa.pub ~p ~q ~gg ~y)
   in
-  let* () = guard (length buf = 44) (Unknown "signature lengh") in
-  let keyida = BE.get_uint32 buf 0 in
-  let buf = shift buf 4 in
-  let siga = split buf 20 in
+  let* () = guard (String.length buf = 44) (Unknown "signature lengh") in
+  let keyida = String.get_int32_be buf 0 in
+  let siga =
+    String.sub buf 4 20,
+    String.sub buf 24 (String.length buf - 24)
+  in
   Ok (key, keyida, siga)
 
 let parse_reveal buf =
   let* r, buf = decode_data buf in
   let* enc_data, mac = decode_data buf in
-  let* () = guard (length mac = 20) (Unknown "wrong mac length") in
+  let* () = guard (String.length mac = 20) (Unknown "wrong mac length") in
   Ok (r, enc_data, mac)
 
 let parse_dh_commit buf =
   let* gxenc, buf = decode_data buf in
   let* hgx, buf = decode_data buf in
   let* () =
-    guard ((length buf = 0) && (length hgx = 32)) (Unknown "bad dh_commit")
+    guard ((String.length buf = 0) && (String.length hgx = 32)) (Unknown "bad dh_commit")
   in
   Ok (gxenc, hgx)
 
 let parse_data_body buf =
-  let* () = guard (length buf >= 9) Underflow in
-  let flags = get_uint8 buf 0
-  and s_keyid = BE.get_uint32 buf 1
-  and r_keyid = BE.get_uint32 buf 5
+  let* () = guard (String.length buf >= 9) Underflow in
+  let flags = String.get_uint8 buf 0
+  and s_keyid = String.get_int32_be buf 1
+  and r_keyid = String.get_int32_be buf 5
   in
-  let* dh_y, buf = decode_data (shift buf 9) in
-  let* () = guard (get_uint8 dh_y 0 <> 0) LeadingZero in
-  let* () = guard (length buf >= 8) Underflow in
-  let ctr = BE.get_uint64 buf 0 in
-  let* encdata, buf = decode_data (shift buf 8) in
-  let* () = guard (length buf >= 20) Underflow in
-  let mac = sub buf 0 20 in
-  let* reveal, buf = decode_data (shift buf 20) in
-  let* () = guard (length buf = 0) Underflow in
+  let* dh_y, buf = decode_data (String.sub buf 9 (String.length buf - 9)) in
+  let* () = guard (String.get_uint8 dh_y 0 <> 0) LeadingZero in
+  let* () = guard (String.length buf >= 8) Underflow in
+  let ctr = String.get_int64_be buf 0 in
+  let* encdata, buf = decode_data (String.sub buf 8 (String.length buf - 8)) in
+  let* () = guard (String.length buf >= 20) Underflow in
+  let mac = String.sub buf 0 20 in
+  let* reveal, buf = decode_data (String.sub buf 20 (String.length buf - 20)) in
+  let* () = guard (String.length buf = 0) Underflow in
   let flags = if flags = 1 then true else false in
   Ok (flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
 
@@ -259,24 +258,24 @@ let parse_data buf =
   Ok (version, instances, flags, s_keyid, r_keyid, dh_y, ctr, encdata, mac, reveal)
 
 let parse_tlv buf =
-  let* () = guard (length buf >= 4) Underflow in
-  let typ = BE.get_uint16 buf 0 in
-  let l = BE.get_uint16 buf 2 in
-  let* () = guard (length buf >= 4 + l) Underflow in
-  Ok (int_to_tlv_type typ, sub buf 4 l, shift buf (4 + l))
+  let* () = guard (String.length buf >= 4) Underflow in
+  let typ = String.get_uint16_be buf 0 in
+  let l = String.get_uint16_be buf 2 in
+  let* () = guard (String.length buf >= 4 + l) Underflow in
+  Ok (int_to_tlv_type typ, String.sub buf 4 l, String.sub buf (4 + l) (String.length buf - (4 + l)))
 
 let parse_datas buf n =
   let rec p_data buf acc = function
-    | 0 when length buf = 0 -> Ok (List.rev acc)
+    | 0 when String.length buf = 0 -> Ok (List.rev acc)
     | 0 -> Error Underflow
     | n ->
       let* x, buf = decode_data buf in
-      let* () = guard (get_uint8 x 0 <> 0) LeadingZero in
+      let* () = guard (String.get_uint8 x 0 <> 0) LeadingZero in
       p_data buf (x :: acc) (pred n)
   in
-  let* () = guard (length buf >= 4) Underflow in
-  let cnt = BE.get_uint32 buf 0 in
+  let* () = guard (String.length buf >= 4) Underflow in
+  let cnt = String.get_int32_be buf 0 in
   if cnt = Int32.of_int n then
-    p_data (shift buf 4) [] n
+    p_data (String.sub buf 4 (String.length buf - 4)) [] n
   else
     Error Underflow
