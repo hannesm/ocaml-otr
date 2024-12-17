@@ -32,3 +32,4 @@ Including the socialist millionairs protocol to authenticate a
 communication partner over an encrypted channel providing a shared
 secret.
 """
+x-maintenance-intent: [ "(latest)" ]
